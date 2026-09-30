@@ -24,7 +24,8 @@ go run .
 也可通过 Docker 启动：
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 发布 GitHub Release 后，[Docker 发布工作流](.github/workflows/docker-release.yml) 自动构建 `linux/amd64` 和 `linux/arm64` 镜像并推送到 `ghcr.io/meowapi/workersai2api`。镜像标签保留 Release 的 Git tag（例如 `v1.0.0`）；正式版同时更新 `latest`，预发布版只发布版本标签。工作流使用内置 `GITHUB_TOKEN`，无需额外配置 registry secret。首次发布后，如需匿名拉取，请将 GitHub Packages 中该镜像的可见性设置为 Public。

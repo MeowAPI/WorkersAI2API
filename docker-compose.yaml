@@ -1,6 +1,6 @@
 services:
   workersai2api:
-    build: .
+    image: ghcr.io/meowapi/workersai2api:latest
     restart: unless-stopped
     env_file: .env
     environment:
