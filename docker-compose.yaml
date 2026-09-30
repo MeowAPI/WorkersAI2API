@@ -1,0 +1,17 @@
+services:
+  workersai2api:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      AUTH_TOKEN: "sk-admin"
+      BIND_ADDRESS: 0.0.0.0
+      PORT: "8080"
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      - workersai-data:/app/data
+    stop_grace_period: 35s
+
+volumes:
+  workersai-data:

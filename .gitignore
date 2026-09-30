@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+/workersai2api
+/bin/
+/coverage.out
+*.test
+/data/

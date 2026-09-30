@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <script src="/admin/theme.js"></script>
+  <title>WorkersAI2API · 管理台</title>
+  <link rel="stylesheet" href="/admin/app.css">
+  <script src="/admin/app.js" defer></script>
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <main id="login-view" class="login-view">
+    <label class="login-theme theme-control">外观 <select data-theme-select aria-label="登录页外观"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
+    <section class="login-panel" aria-labelledby="login-title">
+      <div class="brand-mark" aria-hidden="true">W<span>/</span>A</div>
+      <p class="eyebrow">WORKERS AI / CONTROL ROOM</p>
+      <h1 id="login-title">让模型各就其位。</h1>
+      <p class="login-description">管理账号、分配请求、连接模型。<br>你的 Workers AI，统一入口。</p>
+      <form id="login-form">
+        <label for="auth-token">管理密钥 <span class="mono">AUTH_TOKEN</span></label>
+        <input id="auth-token" name="token" type="password" autocomplete="current-password" placeholder="输入服务的 AUTH_TOKEN" required>
+        <p id="login-error" class="form-error" role="alert" hidden></p>
+        <button id="login-submit" class="button primary login-submit" type="submit">进入管理台 <span aria-hidden="true">→</span></button>
+      </form>
+      <p class="login-note">首次使用？配置 <code>AUTH_TOKEN</code> 并启动服务，即可在这里添加 Cloudflare 账号。</p>
+      <div class="login-footer"><span class="status-dot"></span> WorkersAI2API <span>独立部署 · 本地管理</span></div>
+    </section>
+  </main>
+
+  <div id="app-view" class="app-shell" hidden>
+    <aside class="sidebar">
+      <a class="brand" href="/admin/" aria-label="WorkersAI2API 管理首页"><span class="brand-mark">W<span>/</span>A</span><span class="brand-name">WorkersAI<span>2API / 管理台</span></span></a>
+      <p class="nav-caption">工作空间</p>
+      <nav aria-label="主要导航">
+        <button class="nav-item selected" id="nav-overview" data-tab="overview" aria-current="page"><span class="nav-icon" aria-hidden="true">▥</span>统计概览</button>
+        <button class="nav-item" id="nav-logs" data-tab="logs"><span class="nav-icon" aria-hidden="true">≡</span>请求日志</button>
+        <button class="nav-item" id="nav-accounts" data-tab="accounts"><span class="nav-icon" aria-hidden="true">▤</span>账号池<span id="nav-account-count" class="nav-count">0</span></button>
+        <button class="nav-item" id="nav-models" data-tab="models"><span class="nav-icon" aria-hidden="true">◈</span>模型目录<span id="nav-model-count" class="nav-count">—</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <label class="theme-control">外观 <select data-theme-select aria-label="管理台外观"><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></label>
+        <div class="service-status"><span id="service-dot" class="status-dot"></span><span id="service-label">服务已连接</span></div>
+        <p class="sidebar-caption">每小时同步模型目录</p>
+        <button id="logout" class="logout-button">退出管理台 <span aria-hidden="true">↗</span></button>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="workspace-top"><span>控制台 <span class="path-divider">/</span> <span id="breadcrumb">统计概览</span></span><span class="workspace-label"><span class="status-dot"></span> 自托管服务</span></header>
+      <section id="overview-view" class="page" aria-labelledby="overview-title">
+        <div class="page-heading"><div><p class="eyebrow">TRAFFIC / OBSERVABILITY</p><h1 id="overview-title">统计概览<span class="heading-dot">.</span></h1><p class="page-description">每一次调用，都有迹可循。</p></div><span class="live-indicator"><span class="status-dot"></span> 每 15 秒更新</span></div>
+        <div class="observability-filters" data-filter-set="stats"><label>时间范围<select id="stats-range"><option value="24h">最近 24 小时</option><option value="7d">最近 7 天</option><option value="all">全部留存</option></select></label><label>模型<select id="stats-model"><option value="">全部模型</option></select></label><label>账号<select id="stats-account"><option value="">全部账号</option></select></label><label>结果<select id="stats-status"><option value="">全部结果</option><option value="success">成功</option><option value="error">失败</option><option value="canceled">已取消</option><option value="interrupted">已中断</option></select></label></div>
+        <div id="stats-error" class="notice warning" role="alert" hidden></div><p id="stats-loading" class="loading-note" role="status">正在加载统计…</p>
+        <div id="stats-content" hidden>
+          <div class="metrics overview-metrics" role="group" aria-label="请求统计"><div class="metric"><span>请求总数</span><strong id="stats-requests">0</strong><small id="stats-results">0 成功 · 0 失败</small></div><div class="metric"><span>成功率</span><strong id="stats-rate">0<span>%</span></strong><small id="stats-active">0 个请求处理中</small></div><div class="metric"><span>平均耗时</span><strong id="stats-duration">0<span>ms</span></strong><small id="stats-p95">P95 0 ms</small></div><div class="metric"><span>已报告 Token 用量</span><strong id="stats-tokens">0</strong><small id="stats-coverage">0 / 0 个请求报告用量</small></div></div>
+          <section class="traffic-section" aria-labelledby="traffic-title"><div class="section-heading"><h2 id="traffic-title">请求趋势 <span class="muted mono">/ TRAFFIC</span></h2><div class="chart-legend"><span><i class="legend-success"></i>成功</span><span><i class="legend-error"></i>未完成 / 失败</span></div></div><div id="traffic-chart" class="traffic-chart"></div><div class="traffic-axis"><span id="traffic-start"></span><span id="traffic-caption"></span><span id="traffic-end"></span></div></section>
+          <div class="usage-strip"><div><span>输入 / 输出 Token</span><strong id="stats-token-split">0 / 0</strong></div><div><span>缓存 / 推理 Token</span><strong id="stats-token-extra">0 / 0</strong></div><div><span>平均首字节时间</span><strong id="stats-ttfb">—</strong></div><div><span>请求 / 响应体积</span><strong id="stats-bytes">0 B / 0 B</strong></div></div>
+          <p class="table-footnote">用量仅汇总上游实际报告值；未报告的请求不作估算。首字节时间指响应体首个字节，统计覆盖筛选范围内已留存的请求。</p>
+          <div class="breakdown-grid"><section><div class="section-heading"><h2>按模型</h2><span class="section-note">请求 / 成功率 / TOKEN</span></div><div id="stats-models"></div></section><section><div class="section-heading"><h2>按账号</h2><span class="section-note">请求 / 成功率 / TOKEN</span></div><div id="stats-accounts"></div></section></div>
+          <p id="stats-storage" class="retention-note"></p>
+        </div>
+      </section>
+      <section id="logs-view" class="page" aria-labelledby="logs-title" hidden>
+        <div class="page-heading"><div><p class="eyebrow">REQUEST / RESPONSE</p><h1 id="logs-title">请求日志<span class="heading-dot">.</span></h1><p class="page-description">查看输入、响应与上游调用的完整过程。</p></div><button id="export-logs" class="button secondary">↓ 导出筛选日志</button></div>
+        <div class="observability-filters" data-filter-set="logs"><label>时间范围<select id="logs-range"><option value="24h">最近 24 小时</option><option value="7d">最近 7 天</option><option value="all">全部留存</option></select></label><label>模型<select id="logs-model"><option value="">全部模型</option></select></label><label>账号<select id="logs-account"><option value="">全部账号</option></select></label><label>结果<select id="logs-status"><option value="">全部结果</option><option value="success">成功</option><option value="error">失败</option><option value="canceled">已取消</option><option value="interrupted">已中断</option></select></label></div>
+        <div class="logs-search-row"><label class="search-field"><span aria-hidden="true">⌕</span><input id="logs-q" type="search" placeholder="搜索请求 ID、模型、路径或错误" aria-label="搜索请求日志"></label><span id="logs-count" class="section-note" aria-live="polite"></span></div>
+        <div id="logs-error" class="notice warning" role="alert" hidden></div><p id="logs-loading" class="loading-note" role="status">正在加载日志…</p>
+        <div class="table-wrap"><table class="logs-table"><thead><tr><th>时间 / 请求 ID</th><th>模型 / 入口</th><th>账号</th><th>结果</th><th>耗时 / 首字节</th><th>TOKEN</th><th class="align-right">详情</th></tr></thead><tbody id="logs-rows"></tbody></table></div>
+        <div id="logs-empty" class="empty-state" hidden><span class="empty-symbol" aria-hidden="true">≡</span><h3>暂无匹配的请求</h3><p>通过模型接口发起调用后，日志会显示在这里。<br>也可以调整时间范围或筛选条件。</p></div>
+        <div class="pagination"><p id="logs-page-label" class="section-note"></p><div><button id="logs-prev" class="button secondary" disabled>← 上一页</button><button id="logs-next" class="button secondary" disabled>下一页 →</button></div></div><p id="logs-storage" class="retention-note"></p>
+      </section>
+      <section id="accounts-view" class="page" aria-labelledby="accounts-title" hidden>
+        <div class="page-heading"><div><p class="eyebrow">ACCOUNT POOL</p><h1 id="accounts-title">账号池<span class="heading-dot">.</span></h1><p class="page-description">让每个请求，轮流找到可用账号。</p></div><button id="add-account" class="button primary"><span aria-hidden="true">＋</span> 添加账号</button></div>
+        <div class="metrics" role="group" aria-label="账号统计">
+          <div class="metric"><span>已配置账号</span><strong id="metric-total">0</strong><small>集中管理，立即生效</small></div>
+          <div class="metric"><span>可用账号</span><strong id="metric-available">0<span id="metric-enabled"></span></strong><small>排除停用与冷却中的账号</small></div>
+          <div class="metric"><span>上游调用</span><strong id="metric-requests">0</strong><small>本次服务运行期间</small></div>
+          <div class="metric"><span>上游失败</span><strong id="metric-failures">0</strong><small>上游返回错误或请求失败</small></div>
+        </div>
+        <section class="routing-strip" aria-labelledby="routing-title"><div class="routing-label"><span class="routing-icon" aria-hidden="true">↻</span><div><h2 id="routing-title">轮询调度</h2><p>ROUND ROBIN</p></div></div><div id="routing-sequence" class="routing-sequence"></div><span class="routing-note">跳过停用 / 冷却账号</span></section>
+        <div id="no-available" class="notice warning" hidden>当前没有可用账号。添加或启用账号后即可处理模型请求。</div>
+        <section class="account-section" aria-labelledby="account-list-title">
+          <div class="section-heading"><h2 id="account-list-title">账号列表 <span id="account-list-count" class="muted mono">/ 00</span></h2><span class="section-note">每 15 秒更新状态</span></div>
+          <div class="table-wrap"><table class="account-table"><thead><tr><th>账号 / ACCOUNT ID</th><th>状态</th><th>请求 / 失败</th><th>最近调用</th><th class="align-right">管理</th></tr></thead><tbody id="account-rows"></tbody></table></div>
+          <div id="account-empty" class="empty-state" hidden><span class="empty-symbol" aria-hidden="true">＋</span><h3>从第一个账号开始</h3><p>添加 Cloudflare Account ID 和 API Token，<br>即可通过统一接口调用模型。</p><button id="empty-add-account" class="button secondary">添加账号</button></div>
+          <p class="table-footnote">账号设置自动保存，修改立即生效。失败请求不会自动重放。</p>
+        </section>
+        <section class="connection-strip" aria-label="统一 API 地址"><div><p class="eyebrow">ONE ENDPOINT, ALL MODELS</p><h2>客户端只需一个入口</h2><p>使用模型短名称，自动路由到对应的上游模型。</p></div><div class="copy-field"><code id="api-base"></code><button id="copy-base" class="button copy-button" aria-label="复制 API 基础地址">复制</button></div></section>
+      </section>
+
+      <section id="models-view" class="page" aria-labelledby="models-title" hidden>
+        <div class="page-heading"><div><p class="eyebrow">MODEL DIRECTORY</p><h1 id="models-title">模型目录<span class="heading-dot">.</span></h1><p class="page-description">短名称调用，自动发现 Cloudflare 模型。</p></div><button id="refresh-models" class="button secondary"><span aria-hidden="true">↻</span> 同步目录</button></div>
+        <div class="catalog-status"><span><span class="status-dot"></span> 每小时自动检查</span><span id="catalog-updated">尚未同步</span><span id="catalog-count" class="mono">0 MODELS</span></div>
+        <div id="catalog-error" class="notice warning" role="status" hidden></div>
+        <div class="model-toolbar"><label class="search-field"><span aria-hidden="true">⌕</span><input id="model-search" type="search" placeholder="搜索模型名称或上游路径" aria-label="搜索模型"></label><select id="model-task" aria-label="筛选模型任务"><option value="">全部任务类型</option></select><span id="model-match-count" class="section-note"></span></div>
+        <div id="model-loading" class="empty-state"><p>正在加载模型目录…</p></div>
+        <div id="model-list" class="model-list"></div>
+        <div id="model-empty" class="empty-state" hidden><h3>没有匹配的模型</h3><p>试试其他名称，或切换任务类型。</p></div>
+        <p class="table-footnote">兼容入口来自当前适配能力；“尚无兼容入口”的模型暂不能通过标准接口调用。</p>
+      </section>
+      <footer class="workspace-footer"><span>WorkersAI2API</span><span>连接更多模型，保持简单。</span></footer>
+    </main>
+  </div>
+
+  <dialog id="log-dialog" class="log-dialog" aria-labelledby="log-dialog-title"><div class="dialog-heading"><div><p class="eyebrow">REQUEST INSPECTOR</p><h2 id="log-dialog-title">请求详情</h2></div><button type="button" class="icon-button" data-close-dialog="log-dialog" aria-label="关闭请求详情">×</button></div><div class="detail-toolbar"><code id="detail-id"></code><button id="copy-log-id" class="text-button">复制 ID</button><button id="download-log" class="button secondary" disabled>下载 JSON</button></div><p id="detail-loading" class="loading-note" role="status">正在加载请求详情…</p><div id="detail-error" class="notice warning" role="alert" hidden></div><div id="detail-content"></div></dialog>
+  <dialog id="account-dialog" aria-labelledby="account-dialog-title">
+    <form id="account-form">
+      <div class="dialog-heading"><div><p class="eyebrow">ACCOUNT SETTINGS</p><h2 id="account-dialog-title">添加账号</h2></div><button type="button" class="icon-button" data-close-dialog="account-dialog" aria-label="关闭">×</button></div>
+      <p class="dialog-description">账号凭据保存在服务端，保存后立即参与调度。</p>
+      <label for="account-name">账号名称</label><input id="account-name" name="name" maxlength="100" placeholder="例如：主账号" required autocomplete="off">
+      <label for="account-id">Cloudflare Account ID</label><input id="account-id" name="account_id" class="mono" pattern="[a-fA-F0-9]{32}" title="请输入 32 位十六进制 Account ID" placeholder="32 位 Account ID" required autocomplete="off" spellcheck="false">
+      <label for="account-token">API Token <span id="token-optional" class="label-hint" hidden>留空保留原密钥</span></label><input id="account-token" name="api_token" type="password" placeholder="输入 Cloudflare API Token" autocomplete="new-password">
+      <label class="checkbox-label"><input id="account-enabled" name="enabled" type="checkbox" checked><span>启用此账号，加入轮询</span></label>
+      <p id="account-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions"><button type="button" class="button secondary" data-close-dialog="account-dialog">取消</button><button id="save-account" type="submit" class="button primary">保存账号</button></div>
+    </form>
+  </dialog>
+  <dialog id="delete-dialog" aria-labelledby="delete-title"><form id="delete-form"><div class="dialog-heading"><h2 id="delete-title">删除账号</h2><button type="button" class="icon-button" data-close-dialog="delete-dialog" aria-label="关闭">×</button></div><p class="dialog-description">确定删除 <strong id="delete-name"></strong>？该账号将停止接收新请求。需要时可以重新添加。</p><p id="delete-error" class="form-error" role="alert" hidden></p><div class="dialog-actions"><button type="button" class="button secondary" data-close-dialog="delete-dialog">取消</button><button id="delete-submit" type="submit" class="button danger">删除账号</button></div></form></dialog>
+</body>
+</html>

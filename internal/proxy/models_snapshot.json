@@ -1,0 +1,392 @@
+[
+  {
+    "id": "@cf/ai4bharat/indictrans2-en-indic-1b",
+    "tasks": [
+      "Translation"
+    ]
+  },
+  {
+    "id": "@cf/aisingapore/gemma-sea-lion-v4-27b-it",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/baai/bge-base-en-v1.5",
+    "tasks": [
+      "Text Embeddings"
+    ]
+  },
+  {
+    "id": "@cf/baai/bge-large-en-v1.5",
+    "tasks": [
+      "Text Embeddings"
+    ]
+  },
+  {
+    "id": "@cf/baai/bge-m3",
+    "tasks": [
+      "Text Embeddings"
+    ]
+  },
+  {
+    "id": "@cf/baai/bge-reranker-base",
+    "tasks": [
+      "Text Classification"
+    ]
+  },
+  {
+    "id": "@cf/baai/bge-small-en-v1.5",
+    "tasks": [
+      "Text Embeddings"
+    ]
+  },
+  {
+    "id": "@cf/black-forest-labs/flux-1-schnell",
+    "tasks": [
+      "Text-to-Image"
+    ]
+  },
+  {
+    "id": "@cf/black-forest-labs/flux-2-dev",
+    "tasks": [
+      "Text-to-Image"
+    ]
+  },
+  {
+    "id": "@cf/black-forest-labs/flux-2-klein-4b",
+    "tasks": [
+      "Text-to-Image"
+    ]
+  },
+  {
+    "id": "@cf/black-forest-labs/flux-2-klein-9b",
+    "tasks": [
+      "Text-to-Image"
+    ]
+  },
+  {
+    "id": "@cf/bytedance/stable-diffusion-xl-lightning",
+    "tasks": [
+      "Text-to-Image"
+    ]
+  },
+  {
+    "id": "@cf/deepgram/aura-1",
+    "tasks": [
+      "Text-to-Speech"
+    ]
+  },
+  {
+    "id": "@cf/deepgram/aura-2-en",
+    "tasks": [
+      "Text-to-Speech"
+    ]
+  },
+  {
+    "id": "@cf/deepgram/aura-2-es",
+    "tasks": [
+      "Text-to-Speech"
+    ]
+  },
+  {
+    "id": "@cf/deepgram/flux",
+    "tasks": [
+      "Automatic Speech Recognition"
+    ]
+  },
+  {
+    "id": "@cf/deepgram/nova-3",
+    "tasks": [
+      "Automatic Speech Recognition"
+    ]
+  },
+  {
+    "id": "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/deepseek-ai/deepseek-v4-flash-0731",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/deepseek-ai/deepseek-v4-pro-0813",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/google/embeddinggemma-300m",
+    "tasks": [
+      "Text Embeddings"
+    ]
+  },
+  {
+    "id": "@cf/google/gemma-2b-it-lora",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/google/gemma-4-26b-a4b-it",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/google/gemma-7b-it-lora",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/huggingface/distilbert-sst-2-int8",
+    "tasks": [
+      "Text Classification"
+    ]
+  },
+  {
+    "id": "@cf/ibm-granite/granite-4.0-h-micro",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/leonardo/lucid-origin",
+    "tasks": [
+      "Text-to-Image"
+    ]
+  },
+  {
+    "id": "@cf/leonardo/phoenix-1.0",
+    "tasks": [
+      "Text-to-Image"
+    ]
+  },
+  {
+    "id": "@cf/llava-hf/llava-1.5-7b-hf",
+    "tasks": [
+      "Image-to-Text"
+    ]
+  },
+  {
+    "id": "@cf/lykon/dreamshaper-8-lcm",
+    "tasks": [
+      "Text-to-Image"
+    ]
+  },
+  {
+    "id": "@cf/meta-llama/llama-2-7b-chat-hf-lora",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/meta/llama-3.1-8b-instruct-fp8",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/meta/llama-3.2-11b-vision-instruct",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/meta/llama-3.2-1b-instruct",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/meta/llama-3.2-3b-instruct",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/meta/llama-4-scout-17b-16e-instruct",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/meta/llama-guard-3-8b",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/meta/m2m100-1.2b",
+    "tasks": [
+      "Translation"
+    ]
+  },
+  {
+    "id": "@cf/microsoft/resnet-50",
+    "tasks": [
+      "Image Classification"
+    ]
+  },
+  {
+    "id": "@cf/mistral/mistral-7b-instruct-v0.2-lora",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/mistralai/mistral-small-3.1-24b-instruct",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/moondream/moondream3.1-9b-a2b",
+    "tasks": [
+      "Image-to-Text"
+    ]
+  },
+  {
+    "id": "@cf/moonshotai/kimi-k2.6",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/moonshotai/kimi-k2.7-code",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/myshell-ai/melotts",
+    "tasks": [
+      "Text-to-Speech"
+    ]
+  },
+  {
+    "id": "@cf/nvidia/nemotron-3-120b-a12b",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/openai/gpt-oss-120b",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/openai/gpt-oss-20b",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/openai/whisper",
+    "tasks": [
+      "Automatic Speech Recognition"
+    ]
+  },
+  {
+    "id": "@cf/openai/whisper-large-v3-turbo",
+    "tasks": [
+      "Automatic Speech Recognition"
+    ]
+  },
+  {
+    "id": "@cf/openai/whisper-tiny-en",
+    "tasks": [
+      "Automatic Speech Recognition"
+    ]
+  },
+  {
+    "id": "@cf/pfnet/plamo-embedding-1b",
+    "tasks": [
+      "Text Embeddings"
+    ]
+  },
+  {
+    "id": "@cf/pipecat-ai/smart-turn-v2",
+    "tasks": [
+      "Dumb Pipe"
+    ]
+  },
+  {
+    "id": "@cf/qwen/qwen2.5-coder-32b-instruct",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/qwen/qwen3-30b-a3b-fp8",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/qwen/qwen3-embedding-0.6b",
+    "tasks": [
+      "Text Embeddings"
+    ]
+  },
+  {
+    "id": "@cf/qwen/qwen3.8-27b",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/qwen/qwq-32b",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/runwayml/stable-diffusion-v1-5-inpainting",
+    "tasks": [
+      "Text-to-Image"
+    ]
+  },
+  {
+    "id": "@cf/stabilityai/stable-diffusion-xl-base-1.0",
+    "tasks": [
+      "Text-to-Image"
+    ]
+  },
+  {
+    "id": "@cf/zai-org/glm-4.7-flash",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/zai-org/glm-5.2",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/zai-org/glm-5.3",
+    "tasks": [
+      "Text Generation"
+    ]
+  },
+  {
+    "id": "@cf/zai-org/glm-5.3-flash",
+    "tasks": [
+      "Text Generation"
+    ]
+  }
+]
