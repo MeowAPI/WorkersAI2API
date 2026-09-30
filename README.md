@@ -14,7 +14,7 @@ go run .
 
 程序自动读取**当前工作目录**的 `.env`，无需 `source` 或 `export`；系统环境变量优先（包括显式空值）。支持注释、单双引号、`export KEY=value` 和 CRLF，不执行 shell 命令或变量展开。修改 `.env` 后重启进程。
 
-打开 **http://localhost:8080/admin/**，使用 `AUTH_TOKEN` 登录，在页面添加一个或多个 Cloudflare 账号即可调用 API。根路径 `/` 也会跳转至管理页面。管理页面和所有静态资源嵌入 Go 二进制，不需要 Node.js、CDN 或前端构建。
+打开 http://localhost:8080/admin/ ，使用 `AUTH_TOKEN` 登录，在页面添加一个或多个 Cloudflare 账号即可调用 API。根路径 `/` 也会跳转至管理页面。管理页面和所有静态资源嵌入 Go 二进制，不需要 Node.js、CDN 或前端构建。
 
 | 环境变量 | 用途 | 默认值 |
 | --- | --- | --- |
@@ -25,6 +25,12 @@ go run .
 
 ```bash
 docker compose up -d --build
+```
+
+发布 GitHub Release 后，[Docker 发布工作流](.github/workflows/docker-release.yml) 自动构建 `linux/amd64` 和 `linux/arm64` 镜像并推送到 `ghcr.io/meowapi/workersai2api`。镜像标签保留 Release 的 Git tag（例如 `v1.0.0`）；正式版同时更新 `latest`，预发布版只发布版本标签。工作流使用内置 `GITHUB_TOKEN`，无需额外配置 registry secret。首次发布后，如需匿名拉取，请将 GitHub Packages 中该镜像的可见性设置为 Public。
+
+```bash
+docker pull ghcr.io/meowapi/workersai2api:latest
 ```
 
 Compose 使用命名卷 `workersai-data` 保存账号和请求日志；重建容器会保留这些数据。原生运行时账号保存在当前工作目录的 `data/accounts.json`，文件权限为 `0600`，写入使用原子替换；目录已加入 Git / Docker 忽略规则。备份该文件即可备份账号，文件包含上游密钥。
