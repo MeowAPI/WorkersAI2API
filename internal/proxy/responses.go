@@ -706,8 +706,7 @@ func responsesSessionAffinity(value interface{}) string {
 	if !ok {
 		return ""
 	}
-	key = strings.TrimSpace(key)
-	if key == "" || len(key) > 128 {
+	if key == "" || strings.TrimSpace(key) != key || len(key) > 64 {
 		return ""
 	}
 	for index := 0; index < len(key); index++ {

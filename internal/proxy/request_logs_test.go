@@ -363,9 +363,9 @@ func TestIncompleteJSONAndMultipartValuesDoNotLeakCredentials(t *testing.T) {
 	if bytes.Contains(data, []byte("secret-value")) {
 		t.Fatal("repeated form values not redacted")
 	}
-	headers := http.Header{"X-Auth-Token": []string{"other-token"}, "Cf-Access-Client-Secret": []string{"other-secret"}}
+	headers := http.Header{"X-Auth-Token": []string{"other-token"}, "Cf-Access-Client-Secret": []string{"other-secret"}, "X-Session-Affinity": []string{"session-key"}}
 	data, _ = json.Marshal(safeHeaders(headers, nil))
-	if bytes.Contains(data, []byte("other-")) {
+	if bytes.Contains(data, []byte("other-")) || bytes.Contains(data, []byte("session-key")) {
 		t.Fatal("credential headers not redacted")
 	}
 }

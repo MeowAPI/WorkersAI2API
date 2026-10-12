@@ -311,7 +311,8 @@ func TestResponsesPromptCacheKeyBecomesSessionAffinity(t *testing.T) {
 	}{
 		{"plain key", `"ses_cache_1"`, "ses_cache_1"},
 		{"non-string key", `{"nested":"x"}`, ""},
-		{"overlong key", `"` + strings.Repeat("a", 129) + `"`, ""},
+		{"overlong key", `"` + strings.Repeat("a", 65) + `"`, ""},
+		{"padded key", `" ses_cache_1 "`, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := testServer(t, func(w http.ResponseWriter, r *http.Request) {

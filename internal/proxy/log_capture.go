@@ -186,7 +186,7 @@ func sensitiveKey(key string) bool {
 		}
 	}
 	switch key {
-	case "authorization", "proxy_authorization", "cookie", "set_cookie", "x_api_key", "x_goog_api_key", "api_key", "apikey", "api_token", "access_token", "refresh_token", "auth_token", "password", "secret", "client_secret", "token", "key":
+	case "authorization", "proxy_authorization", "cookie", "set_cookie", "x_api_key", "x_goog_api_key", "x_session_affinity", "api_key", "apikey", "api_token", "access_token", "refresh_token", "auth_token", "password", "secret", "client_secret", "token", "key":
 		return true
 	}
 	return false
