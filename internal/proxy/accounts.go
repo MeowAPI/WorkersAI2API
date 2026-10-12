@@ -265,7 +265,7 @@ func (p *accountPool) record(a account, resp *http.Response, err error) {
 type accountBindingKey struct{}
 type accountBinding struct{ selected *account }
 
-func (s *Server) upstream(ctx context.Context, w http.ResponseWriter, path, contentType, accept string, body []byte) (*http.Response, error) {
+func (s *Server) upstream(ctx context.Context, w http.ResponseWriter, path, contentType, accept string, body []byte, extraHeaders http.Header) (*http.Response, error) {
 	binding, _ := ctx.Value(accountBindingKey{}).(*accountBinding)
 	var a account
 	if binding != nil && binding.selected != nil {
@@ -289,6 +289,11 @@ func (s *Server) upstream(ctx context.Context, w http.ResponseWriter, path, cont
 	req.Header.Set("Content-Type", contentType)
 	if accept != "" {
 		req.Header.Set("Accept", accept)
+	}
+	for name, values := range extraHeaders {
+		for _, value := range values {
+			req.Header.Add(name, value)
+		}
 	}
 	var step *upstreamTrace
 	if trace := traceFrom(ctx); trace != nil {

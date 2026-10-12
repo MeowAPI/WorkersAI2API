@@ -164,7 +164,7 @@ curl http://localhost:8080/v1/rerank \
 - **重排序**：BGE Reranker 支持字符串/`{"text":...}` 文档，返回按分数降序排列的 `index`、`relevance_score` 和可选 `document`，保留输入索引。
 - **专用文本/视觉任务**：翻译模型、DistilBERT、ResNet、LLaVA 通过 Chat Completions 的单条 user 消息调用，回复为标准 assistant 内容；不支持会话历史、工具调用。分类返回 JSON 文本。翻译可通过 `extra_body={"source_lang":"english","target_lang":"french"}` 指定语言，默认翻译成英语。ResNet/LLaVA 接受标准 `image_url` 内容块中的 Base64 data URL。模型一次性完成后再输出 SSE 内容，不声称上游逐 token 生成。
 - **尚无兼容入口的模型**：Flux 实时语音、Smart Turn 以及尚未适配的 Moondream，其 `supported_endpoints` 为空；不会伪装成可用的聊天模型。
-- **聊天协议**：保留工具、图片及 reasoning_content 的转换。Responses 无状态，需要完整 input；不支持 previous_response_id、后台任务、内置搜索/执行工具。store/include 作为兼容提示忽略。推理预算只能近似映射，不生成供应商签名。
+- **聊天协议**：保留工具、图片及 reasoning_content 的转换。Responses 无状态，需要完整 input；不支持 previous_response_id、后台任务、内置搜索/执行工具。store/include、metadata/client_metadata、user/safety_identifier 及 prompt_cache_retention/prompt_cache_options 作为兼容提示忽略；prompt_cache_key 转为 Workers AI 的前缀缓存会话亲缘头 `x-session-affinity`（Workers AI 无同名字段），值不是普通短字符串时仅忽略该提示。推理预算只能近似映射，不生成供应商签名。
 
 媒体请求体上限 64 MiB，聊天输入 16 MiB；图片/结构化媒体响应上限 64 MiB。请求取消会取消上游，写入空闲超时 30 秒。错误统一成客户端兼容格式，保留状态码及 Retry-After；不自动重试付费生成请求。
 

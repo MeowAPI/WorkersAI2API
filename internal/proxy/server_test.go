@@ -302,6 +302,44 @@ func TestInvalidRequestsNeverReachUpstream(t *testing.T) {
 	}
 }
 
+func TestResponsesPromptCacheKeyBecomesSessionAffinity(t *testing.T) {
+	dropped := []string{"prompt_cache_key", "metadata", "client_metadata", "user", "safety_identifier", "prompt_cache_options", "prompt_cache_retention"}
+	for _, tc := range []struct {
+		name     string
+		key      string
+		affinity string
+	}{
+		{"plain key", `"ses_cache_1"`, "ses_cache_1"},
+		{"non-string key", `{"nested":"x"}`, ""},
+		{"overlong key", `"` + strings.Repeat("a", 129) + `"`, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := testServer(t, func(w http.ResponseWriter, r *http.Request) {
+				if got := r.Header.Get("X-Session-Affinity"); got != tc.affinity {
+					t.Errorf("session affinity = %q, want %q", got, tc.affinity)
+				}
+				data, _ := io.ReadAll(r.Body)
+				var body map[string]any
+				if err := json.Unmarshal(data, &body); err != nil {
+					t.Errorf("invalid chat body: %v", err)
+				}
+				for _, key := range dropped {
+					if _, ok := body[key]; ok {
+						t.Errorf("compatibility hint %s leaked upstream: %s", key, data)
+					}
+				}
+				w.Header().Set("Content-Type", "application/json")
+				io.WriteString(w, chatJSON)
+			})
+			body := fmt.Sprintf(`{"model":"test","input":"hi","prompt_cache_key":%s,"metadata":{"session_id":"x"},"client_metadata":{"origin":"codex"},"user":"u1","safety_identifier":"s1","prompt_cache_options":{"mode":"explicit"},"prompt_cache_retention":"24h"}`, tc.key)
+			w := request(s, "/v1/responses", body)
+			if w.Code != 200 {
+				t.Fatalf("compatibility hints rejected: %d %s", w.Code, w.Body)
+			}
+		})
+	}
+}
+
 func TestErrorsAndRedirects(t *testing.T) {
 	for _, status := range []int{302, 401, 429, 500} {
 		for _, protocol := range []string{"chat", "responses", "anthropic", "gemini"} {

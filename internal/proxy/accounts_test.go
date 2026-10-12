@@ -193,7 +193,7 @@ func TestImagesBatchUsesSingleAccount(t *testing.T) {
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("ok"))}, nil
 	})
 	for i := 0; i < 3; i++ {
-		resp, err := s.upstream(ctx, httptest.NewRecorder(), "/run/@cf/test/model", "application/json", "", nil)
+		resp, err := s.upstream(ctx, httptest.NewRecorder(), "/run/@cf/test/model", "application/json", "", nil, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

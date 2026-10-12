@@ -182,7 +182,7 @@ func (s *Server) mediaAPI(w *responseWriter, r *http.Request) {
 }
 
 func (s *Server) mediaUpstream(ctx context.Context, w http.ResponseWriter, path, contentType string, body []byte) (*http.Response, error) {
-	resp, err := s.upstream(ctx, w, path, contentType, "", body)
+	resp, err := s.upstream(ctx, w, path, contentType, "", body, nil)
 	if err != nil {
 		var failure *apiFailure
 		if errors.As(err, &failure) {

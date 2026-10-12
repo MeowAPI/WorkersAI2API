@@ -140,7 +140,7 @@ func requireJSONArray(raw map[string]interface{}, field string) ([]interface{}, 
 }
 
 func validateResponsesForChat(raw map[string]interface{}) error {
-	if err := rejectUnsupportedFields(raw, "Chat Responses", "model", "input", "instructions", "max_output_tokens", "tools", "tool_choice", "temperature", "top_p", "stream", "text", "reasoning", "parallel_tool_calls", "include", "store"); err != nil {
+	if err := rejectUnsupportedFields(raw, "Chat Responses", "model", "input", "instructions", "max_output_tokens", "tools", "tool_choice", "temperature", "top_p", "stream", "text", "reasoning", "parallel_tool_calls", "include", "store", "metadata", "client_metadata", "user", "safety_identifier", "prompt_cache_key", "prompt_cache_options", "prompt_cache_retention"); err != nil {
 		return err
 	}
 	consumeResponsesCompatibilityHints(raw)
@@ -247,10 +247,15 @@ func validateResponsesChatContent(value interface{}, path string) error {
 }
 
 func consumeResponsesCompatibilityHints(raw map[string]interface{}) {
-	// These options control OpenAI-side persistence and optional response
-	// decorations. Compatibility providers are stateless, so accepting and
-	// dropping them gives clients such as Cherry Studio the most useful result
-	// without changing the generated model input.
-	delete(raw, "store")
-	delete(raw, "include")
+	// These options control OpenAI-side persistence, optional response
+	// decorations, and client bookkeeping. Compatibility providers are
+	// stateless, so accepting and dropping them gives clients such as Cherry
+	// Studio and Codex the most useful result without changing the generated
+	// model input. prompt_cache_retention and prompt_cache_options only
+	// configure OpenAI-side cache lifetime, which Workers AI does not expose.
+	for _, key := range []string{"store", "include", "metadata", "client_metadata", "user", "safety_identifier", "prompt_cache_options", "prompt_cache_retention"} {
+		delete(raw, key)
+	}
+	// prompt_cache_key stays in the request so the caller can translate it into
+	// Workers AI's prefix-caching hint (the x-session-affinity header).
 }

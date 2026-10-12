@@ -696,6 +696,28 @@ func int64Value(value interface{}) int64 {
 	}
 }
 
+// responsesSessionAffinity carries a Responses prompt_cache_key over to Workers
+// AI, which has no prompt_cache_key field: it keys prefix caching off the
+// x-session-affinity header so requests sharing a prefix reach the instance
+// holding the cached tensors. Values that are not a plain short string are
+// dropped instead of risking an invalid header field.
+func responsesSessionAffinity(value interface{}) string {
+	key, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	key = strings.TrimSpace(key)
+	if key == "" || len(key) > 128 {
+		return ""
+	}
+	for index := 0; index < len(key); index++ {
+		if key[index] < 0x21 || key[index] > 0x7e {
+			return ""
+		}
+	}
+	return key
+}
+
 func convertResponsesToChat(body []byte) ([]byte, string, bool, error) {
 	var raw map[string]interface{}
 	if err := json.Unmarshal(body, &raw); err != nil {

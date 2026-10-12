@@ -176,6 +176,15 @@ func (s *Server) ServeHTTP(out http.ResponseWriter, r *http.Request) {
 		writeError(w, protocol, 400, err.Error())
 		return
 	}
+	// Workers AI has no prompt_cache_key field, so the Responses compatibility
+	// path maps it onto the provider's prefix-caching session affinity instead
+	// of rejecting the request.
+	var upstreamHeaders http.Header
+	if protocol == "responses" {
+		if affinity := responsesSessionAffinity(raw["prompt_cache_key"]); affinity != "" {
+			upstreamHeaders = http.Header{"X-Session-Affinity": []string{affinity}}
+		}
+	}
 	// Preserve Chat Completions bytes and unknown provider options unless a model
 	// alias is used. Adapted protocols use Workers AI's max_tokens parameter.
 	target, err := s.resolveModel(modelID)
@@ -230,7 +239,7 @@ func (s *Server) ServeHTTP(out http.ResponseWriter, r *http.Request) {
 		if stream {
 			accept = "text/event-stream"
 		}
-		resp, err = s.upstream(ctx, w, "/v1/chat/completions", "application/json", accept, body)
+		resp, err = s.upstream(ctx, w, "/v1/chat/completions", "application/json", accept, body, upstreamHeaders)
 	}
 	if err != nil {
 		if r.Context().Err() == nil {
