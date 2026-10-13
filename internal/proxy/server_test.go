@@ -151,6 +151,31 @@ func TestProtocolRequestsAndResponses(t *testing.T) {
 	}
 }
 
+func TestResponsesBuiltinToolsAreDroppedBeforeChat(t *testing.T) {
+	s := testServer(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		raw := object(t, body)
+		tools, ok := raw["tools"].([]any)
+		if !ok || len(tools) != 2 {
+			t.Errorf("function tools were not preserved: %s", body)
+		}
+		for _, item := range tools {
+			tool := item.(map[string]any)
+			if tool["type"] != "function" {
+				t.Errorf("built-in tool leaked to Chat upstream: %s", body)
+			}
+		}
+		if _, ok := raw["tool_choice"]; ok {
+			t.Errorf("tool_choice for dropped built-in leaked upstream: %s", body)
+		}
+		io.WriteString(w, chatJSON)
+	})
+	body := `{"model":"test","input":"hi","tools":[{"type":"function","name":"weather","parameters":{"type":"object"}},{"type":"web_search_preview"},{"type":"file_search"},{"type":"computer_use_preview","display_width":1024,"display_height":768,"environment":"browser"},{"type":"code_interpreter","container":{"type":"auto"}},{"type":"image_generation"},{"type":"mcp","server_label":"tools"},{"type":"function","name":"clock","parameters":{"type":"object"}}],"tool_choice":{"type":"web_search_preview"}}`
+	if w := request(s, "/v1/responses", body); w.Code != 200 {
+		t.Fatalf("built-in Responses tools rejected: %d %s", w.Code, w.Body)
+	}
+}
+
 func TestChatPassthroughPreservesBody(t *testing.T) {
 	body := `{ "model":"@cf/test/model", "messages":[{"role":"user","content":"hi"}], "seed":9007199254740993,"options":{"rejectIfBusy":true}}`
 	s := testServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -282,7 +307,7 @@ func TestInvalidRequestsNeverReachUpstream(t *testing.T) {
 	for _, tc := range []struct{ path, body string }{
 		{"/v1/chat/completions", "null"}, {"/v1/chat/completions", "{}"}, {"/v1/chat/completions", `{"model":"test","messages":[{}],"stream":"true"}`},
 		{"/v1/responses", `{"model":"test","input":"hi","previous_response_id":"resp_old"}`},
-		{"/v1/responses", `{"model":"test","input":"hi","tools":[{"type":"web_search"}]}`},
+		{"/v1/responses", `{"model":"test","input":"hi","tools":[{}]}`},
 		{"/v1/messages", `{"model":"test","messages":[{"role":"admin","content":"hi"}]}`},
 		{"/v1beta/models/test:generateContent", `{"contents":[{"parts":[{"fileData":{"fileUri":"gs://secret"}}]}]}`},
 	} {

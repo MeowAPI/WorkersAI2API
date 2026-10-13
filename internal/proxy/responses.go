@@ -38,7 +38,11 @@ func stringValue(value interface{}) string {
 	return string(encoded)
 }
 
-func streamChatAsResponses(w http.ResponseWriter, resp *http.Response, modelID string) error {
+func streamChatAsResponses(w http.ResponseWriter, resp *http.Response, modelID string, bridges ...*responsesToolBridge) error {
+	var bridge *responsesToolBridge
+	if len(bridges) > 0 {
+		bridge = bridges[0]
+	}
 	copyResponseHeaders(w.Header(), resp.Header, true)
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -104,6 +108,41 @@ func streamChatAsResponses(w http.ResponseWriter, resp *http.Response, modelID s
 				"status": "failed", "model": responseModel,
 				"error": map[string]interface{}{"code": "upstream_protocol_error", "message": err.Error()},
 			},
+		})
+	}
+	startTool := func(state *responsesStreamTool, force bool) error {
+		if state.started || state.name == "" {
+			return nil
+		}
+		if bridge != nil && len(bridge.names) > 0 && !force {
+			if _, declared := bridge.names[state.name]; !declared {
+				// The name may arrive after argument fragments, or in fragments
+				// itself. Wait for the declaration before choosing the wire type.
+				return nil
+			}
+		}
+		state.started = true
+		return writeEvent("response.output_item.added", map[string]interface{}{
+			"type": "response.output_item.added", "response_id": responseID,
+			"output_index": state.outputIndex,
+			"item":         bridge.output(state.id, state.name, "", "in_progress"),
+		})
+	}
+	writeToolArguments := func(state *responsesStreamTool) error {
+		if !state.started || bridge.identity(state.name).typ != "function" {
+			// Custom inputs are JSON-wrapped on the Chat side. Decode the full
+			// input at completion; partial JSON is not a custom input delta.
+			return nil
+		}
+		arguments := state.arguments.String()
+		if len(arguments) <= state.sentArguments {
+			return nil
+		}
+		delta := arguments[state.sentArguments:]
+		state.sentArguments = len(arguments)
+		return writeEvent("response.function_call_arguments.delta", map[string]interface{}{
+			"type": "response.function_call_arguments.delta", "response_id": responseID,
+			"item_id": state.id, "output_index": state.outputIndex, "delta": delta,
 		})
 	}
 	startReasoning := func() error {
@@ -314,7 +353,6 @@ func streamChatAsResponses(w http.ResponseWriter, resp *http.Response, modelID s
 			call, _ := item.(map[string]interface{})
 			index := intValue(call["index"])
 			state := tools[index]
-			newTool := false
 			if state == nil {
 				state = &responsesStreamTool{
 					id:          firstNonEmptyString(call["id"], fmt.Sprintf("call_%d", index)),
@@ -323,46 +361,21 @@ func streamChatAsResponses(w http.ResponseWriter, resp *http.Response, modelID s
 				nextOutputIndex++
 				tools[index] = state
 				toolOrder = append(toolOrder, index)
-				newTool = true
+			}
+			if id := stringValue(call["id"]); id != "" && !state.started {
+				state.id = id
 			}
 			function, _ := call["function"].(map[string]interface{})
 			if name := stringValue(function["name"]); name != "" {
-				state.name = name
-			}
-			if newTool {
-				if err := writeEvent("response.output_item.added", map[string]interface{}{
-					"type":         "response.output_item.added",
-					"response_id":  responseID,
-					"output_index": state.outputIndex,
-					"item": map[string]interface{}{
-						"type":      "function_call",
-						"id":        state.id,
-						"call_id":   state.id,
-						"status":    "in_progress",
-						"name":      state.name,
-						"arguments": "",
-					},
-				}); err != nil {
-					return err
+				if state.name != name {
+					state.name += name
 				}
 			}
-
-			arguments := stringValue(function["arguments"])
-			if arguments == "" {
-				continue
+			state.arguments.WriteString(stringValue(function["arguments"]))
+			if err := startTool(state, false); err != nil {
+				return err
 			}
-			deltaArguments := arguments
-			state.arguments.WriteString(arguments)
-			if deltaArguments == "" {
-				continue
-			}
-			if err := writeEvent("response.function_call_arguments.delta", map[string]interface{}{
-				"type":         "response.function_call_arguments.delta",
-				"response_id":  responseID,
-				"item_id":      state.id,
-				"output_index": state.outputIndex,
-				"delta":        deltaArguments,
-			}); err != nil {
+			if err := writeToolArguments(state); err != nil {
 				return err
 			}
 		}
@@ -374,8 +387,14 @@ func streamChatAsResponses(w http.ResponseWriter, resp *http.Response, modelID s
 		return writeFailure(fmt.Errorf("upstream OpenAI stream ended without a terminal event"))
 	}
 	for _, state := range tools {
-		if state.name == "" || !json.Valid([]byte(state.arguments.String())) {
+		if state.name == "" || (bridge.identity(state.name).typ != "custom" && !json.Valid([]byte(state.arguments.String()))) {
 			return writeFailure(fmt.Errorf("upstream returned incomplete tool arguments or name"))
+		}
+		if err := startTool(state, true); err != nil {
+			return err
+		}
+		if err := writeToolArguments(state); err != nil {
+			return err
 		}
 	}
 	output := make([]interface{}, nextOutputIndex)
@@ -477,23 +496,32 @@ func streamChatAsResponses(w http.ResponseWriter, resp *http.Response, modelID s
 
 	for _, index := range toolOrder {
 		state := tools[index]
-		toolOutput := map[string]interface{}{
-			"type":      "function_call",
-			"id":        state.id,
-			"call_id":   state.id,
-			"status":    "completed",
-			"name":      state.name,
-			"arguments": state.arguments.String(),
-		}
+		toolOutput := bridge.output(state.id, state.name, state.arguments.String(), "completed")
 		output[state.outputIndex] = toolOutput
-		if err := writeEvent("response.function_call_arguments.done", map[string]interface{}{
-			"type":         "response.function_call_arguments.done",
-			"response_id":  responseID,
-			"item_id":      state.id,
-			"output_index": state.outputIndex,
-			"arguments":    state.arguments.String(),
-		}); err != nil {
-			return err
+		if toolOutput["type"] == "custom_tool_call" {
+			input := toolOutput["input"].(string)
+			if input != "" {
+				if err := writeEvent("response.custom_tool_call_input.delta", map[string]interface{}{
+					"type": "response.custom_tool_call_input.delta", "response_id": responseID,
+					"item_id": state.id, "output_index": state.outputIndex, "delta": input,
+				}); err != nil {
+					return err
+				}
+			}
+			if err := writeEvent("response.custom_tool_call_input.done", map[string]interface{}{
+				"type": "response.custom_tool_call_input.done", "response_id": responseID,
+				"item_id": state.id, "output_index": state.outputIndex,
+				"call_id": state.id, "name": toolOutput["name"], "input": input,
+			}); err != nil {
+				return err
+			}
+		} else if toolOutput["type"] == "function_call" {
+			if err := writeEvent("response.function_call_arguments.done", map[string]interface{}{
+				"type": "response.function_call_arguments.done", "response_id": responseID,
+				"item_id": state.id, "output_index": state.outputIndex, "arguments": state.arguments.String(),
+			}); err != nil {
+				return err
+			}
 		}
 		if err := writeEvent("response.output_item.done", map[string]interface{}{
 			"type":         "response.output_item.done",
@@ -535,10 +563,12 @@ func streamChatAsResponses(w http.ResponseWriter, resp *http.Response, modelID s
 }
 
 type responsesStreamTool struct {
-	id          string
-	name        string
-	outputIndex int
-	arguments   strings.Builder
+	id            string
+	name          string
+	outputIndex   int
+	arguments     strings.Builder
+	started       bool
+	sentArguments int
 }
 
 func normalizedResponsesUsage(usage map[string]interface{}) map[string]interface{} {
@@ -555,7 +585,11 @@ func normalizedResponsesUsage(usage map[string]interface{}) map[string]interface
 	}
 }
 
-func convertChatJSONToResponses(body []byte, modelID string) ([]byte, error) {
+func convertChatJSONToResponses(body []byte, modelID string, bridges ...*responsesToolBridge) ([]byte, error) {
+	var bridge *responsesToolBridge
+	if len(bridges) > 0 {
+		bridge = bridges[0]
+	}
 	var raw map[string]interface{}
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, err
@@ -634,14 +668,7 @@ func convertChatJSONToResponses(body []byte, modelID string) ([]byte, error) {
 				call, _ := item.(map[string]interface{})
 				function, _ := call["function"].(map[string]interface{})
 				callID := stringValue(call["id"])
-				output = append(output, map[string]interface{}{
-					"type":      "function_call",
-					"id":        callID,
-					"call_id":   callID,
-					"status":    "completed",
-					"name":      stringValue(function["name"]),
-					"arguments": stringValue(function["arguments"]),
-				})
+				output = append(output, bridge.output(callID, stringValue(function["name"]), stringValue(function["arguments"]), "completed"))
 			}
 		}
 	}
@@ -718,12 +745,19 @@ func responsesSessionAffinity(value interface{}) string {
 }
 
 func convertResponsesToChat(body []byte) ([]byte, string, bool, error) {
+	return convertResponsesToChatWithBridge(body, &responsesToolBridge{})
+}
+
+func convertResponsesToChatWithBridge(body []byte, bridge *responsesToolBridge) ([]byte, string, bool, error) {
 	var raw map[string]interface{}
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, "", false, err
 	}
 	removeUndefinedPlaceholders(raw)
 	if err := validateResponsesForChat(raw); err != nil {
+		return nil, "", false, err
+	}
+	if err := bridge.prepare(raw); err != nil {
 		return nil, "", false, err
 	}
 
@@ -769,9 +803,6 @@ func convertResponsesToChat(body []byte) ([]byte, string, bool, error) {
 	if value, ok := raw["max_output_tokens"]; ok {
 		chat["max_completion_tokens"] = value
 	}
-	if value, ok := raw["tool_choice"]; ok {
-		chat["tool_choice"] = responsesToolChoiceToChat(value)
-	}
 	if value, ok := raw["parallel_tool_calls"]; ok {
 		chat["parallel_tool_calls"] = value
 	}
@@ -780,9 +811,12 @@ func convertResponsesToChat(body []byte) ([]byte, string, bool, error) {
 			chat["reasoning_effort"] = effort
 		}
 	}
-	if tools, ok := raw["tools"].([]interface{}); ok {
-		if converted := responsesToolsToChat(tools); len(converted) > 0 {
-			chat["tools"] = converted
+	if len(bridge.tools) > 0 {
+		chat["tools"] = bridge.tools
+		if value, exists := raw["tool_choice"]; exists {
+			if choice := bridge.choice(value); choice != nil {
+				chat["tool_choice"] = choice
+			}
 		}
 	}
 
@@ -829,31 +863,22 @@ func responsesContentToChat(value interface{}) interface{} {
 	return content
 }
 
-func responsesToolsToChat(tools []interface{}) []interface{} {
-	converted := make([]interface{}, 0, len(tools))
+func responsesChatToolNames(tools []interface{}) map[string]struct{} {
+	names := make(map[string]struct{}, len(tools))
 	for _, item := range tools {
 		tool, ok := item.(map[string]interface{})
 		if !ok {
 			continue
 		}
-		if toolType, _ := tool["type"].(string); toolType != "function" {
+		function, ok := tool["function"].(map[string]interface{})
+		if !ok {
 			continue
 		}
-		function := map[string]interface{}{}
-		for _, key := range []string{"name", "description", "parameters", "strict"} {
-			if value, ok := tool[key]; ok {
-				function[key] = value
-			}
+		if name := stringValue(function["name"]); name != "" {
+			names[name] = struct{}{}
 		}
-		if _, ok := function["name"]; !ok {
-			continue
-		}
-		converted = append(converted, map[string]interface{}{
-			"type":     "function",
-			"function": function,
-		})
 	}
-	return converted
+	return names
 }
 
 func responsesInputToChatMessages(value interface{}) []interface{} {
@@ -871,14 +896,28 @@ func responsesInputToChatMessages(value interface{}) []interface{} {
 
 		typeName, _ := entry["type"].(string)
 		switch typeName {
-		case "function_call":
+		case "function_call", "custom_tool_call", "tool_search_call":
 			name, _ := entry["name"].(string)
+			if typeName == "tool_search_call" {
+				name = "tool_search"
+			}
 			if name == "" {
 				continue
 			}
 			callID, _ := entry["call_id"].(string)
 			if callID == "" {
 				callID, _ = entry["id"].(string)
+			}
+			if namespace := stringValue(entry["namespace"]); namespace != "" {
+				name = flattenResponsesToolName(namespace, name)
+			}
+			arguments := stringValue(entry["arguments"])
+			if typeName == "custom_tool_call" {
+				wrapped, _ := json.Marshal(map[string]string{"input": stringValue(entry["input"])})
+				arguments = string(wrapped)
+			}
+			if strings.TrimSpace(arguments) == "" {
+				arguments = "{}"
 			}
 			messages = append(messages, map[string]interface{}{
 				"role": "assistant",
@@ -887,16 +926,20 @@ func responsesInputToChatMessages(value interface{}) []interface{} {
 					"type": "function",
 					"function": map[string]interface{}{
 						"name":      name,
-						"arguments": stringValue(entry["arguments"]),
+						"arguments": arguments,
 					},
 				}},
 			})
-		case "function_call_output":
+		case "function_call_output", "custom_tool_call_output", "tool_search_output":
 			callID, _ := entry["call_id"].(string)
+			output := entry["output"]
+			if typeName == "tool_search_output" && output == nil {
+				output = entry["tools"]
+			}
 			messages = append(messages, map[string]interface{}{
 				"role":         "tool",
 				"tool_call_id": callID,
-				"content":      stringValue(entry["output"]),
+				"content":      stringValue(output),
 			})
 		case "reasoning":
 			reasoning := strings.Builder{}
@@ -916,6 +959,12 @@ func responsesInputToChatMessages(value interface{}) []interface{} {
 			}
 			messages = append(messages, message)
 		default:
+			if typeName != "" && typeName != "message" {
+				// Provider/client-side Responses items such as web_search_call
+				// and computer_call have no Chat equivalent. Skipping them avoids
+				// manufacturing empty messages that can break tool-call history.
+				continue
+			}
 			role, _ := entry["role"].(string)
 			if role == "" {
 				if typeName == "message" {
@@ -939,11 +988,22 @@ func responsesInputToChatMessages(value interface{}) []interface{} {
 	merged := make([]interface{}, 0, len(messages))
 	for _, item := range messages {
 		message := item.(map[string]interface{})
-		if calls, ok := message["tool_calls"].([]interface{}); ok && len(merged) > 0 {
+		if message["role"] == "assistant" && len(merged) > 0 {
 			previous := merged[len(merged)-1].(map[string]interface{})
 			if stringValue(previous["role"]) == "assistant" {
-				existing, _ := previous["tool_calls"].([]interface{})
-				previous["tool_calls"] = append(existing, calls...)
+				if calls, ok := message["tool_calls"].([]interface{}); ok {
+					existing, _ := previous["tool_calls"].([]interface{})
+					previous["tool_calls"] = append(existing, calls...)
+				}
+				if content, exists := message["content"]; exists {
+					previous["content"] = mergeResponsesAssistantContent(previous["content"], content)
+				}
+				if reasoning := stringValue(message["reasoning_content"]); reasoning != "" {
+					previous["reasoning_content"] = stringValue(previous["reasoning_content"]) + reasoning
+				}
+				if signature := stringValue(message["reasoning_signature"]); signature != "" {
+					previous["reasoning_signature"] = signature
+				}
 				continue
 			}
 		}
@@ -952,21 +1012,65 @@ func responsesInputToChatMessages(value interface{}) []interface{} {
 	return merged
 }
 
-func responsesToolChoiceToChat(value interface{}) interface{} {
+func mergeResponsesAssistantContent(first, second interface{}) interface{} {
+	if first == nil {
+		return second
+	}
+	if text, ok := first.(string); ok && text == "" {
+		return second
+	}
+	if text, ok := second.(string); ok && text == "" {
+		return first
+	}
+	parts := func(content interface{}) []interface{} {
+		if text, ok := content.(string); ok {
+			return []interface{}{map[string]interface{}{"type": "text", "text": text}}
+		}
+		array, _ := content.([]interface{})
+		return array
+	}
+	return append(parts(first), parts(second)...)
+}
+
+func responsesToolChoiceToChat(value interface{}, declared map[string]struct{}) interface{} {
+	if text, ok := value.(string); ok {
+		if len(declared) > 0 && (text == "auto" || text == "none" || text == "required") {
+			return text
+		}
+		return nil
+	}
 	choice, ok := value.(map[string]interface{})
 	if !ok {
-		return value
+		return nil
 	}
-	if _, hasFunction := choice["function"]; hasFunction {
-		return value
+	typ := stringValue(choice["type"])
+	if typ == "auto" || typ == "none" || typ == "required" {
+		if len(declared) > 0 {
+			return typ
+		}
+		return nil
 	}
-	if name, ok := choice["name"].(string); ok && name != "" {
-		return map[string]interface{}{
-			"type": "function",
-			"function": map[string]interface{}{
-				"name": name,
-			},
+	if typ != "function" && typ != "custom" {
+		// Built-in tool choices (for example web_search_preview) are dropped
+		// with the corresponding tool instead of reaching Chat upstream.
+		return nil
+	}
+	name := stringValue(choice["name"])
+	if name == "" {
+		if function, ok := choice["function"].(map[string]interface{}); ok {
+			name = stringValue(function["name"])
 		}
 	}
-	return value
+	if name == "" {
+		return nil
+	}
+	if _, ok := declared[name]; !ok {
+		return nil
+	}
+	return map[string]interface{}{
+		"type": "function",
+		"function": map[string]interface{}{
+			"name": name,
+		},
+	}
 }

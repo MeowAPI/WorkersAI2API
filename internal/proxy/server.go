@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -155,9 +156,11 @@ func (s *Server) ServeHTTP(out http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var responsesBridge *responsesToolBridge
 	switch protocol {
 	case "responses":
-		body, modelID, stream, err = convertResponsesToChat(body)
+		responsesBridge = &responsesToolBridge{}
+		body, modelID, stream, err = convertResponsesToChatWithBridge(body, responsesBridge)
 	case "anthropic":
 		body, modelID, stream, err = convertAnthropicMessagesToChat(body)
 	case "gemini":
@@ -228,6 +231,15 @@ func (s *Server) ServeHTTP(out http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	var omittedImages int
+	body, omittedImages, err = limitChatImagesForModel(body, target)
+	if err != nil {
+		writeError(w, protocol, 400, err.Error())
+		return
+	}
+	if omittedImages > 0 {
+		w.Header().Set("X-Images-Omitted", strconv.Itoa(omittedImages))
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), s.requestTimeout)
 	defer cancel()
@@ -278,7 +290,7 @@ func (s *Server) ServeHTTP(out http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Accel-Buffering", "no")
 		switch protocol {
 		case "responses":
-			err = streamChatAsResponses(w, resp, modelID)
+			err = streamChatAsResponses(w, resp, modelID, responsesBridge)
 		case "anthropic":
 			err = streamChatAsAnthropic(w, resp, modelID)
 		case "gemini":
@@ -301,7 +313,7 @@ func (s *Server) ServeHTTP(out http.ResponseWriter, r *http.Request) {
 	}
 	switch protocol {
 	case "responses":
-		data, err = convertChatJSONToResponses(data, modelID)
+		data, err = convertChatJSONToResponses(data, modelID, responsesBridge)
 	case "anthropic":
 		data, err = convertChatJSONToAnthropic(data, modelID)
 	case "gemini":

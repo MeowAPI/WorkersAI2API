@@ -153,12 +153,9 @@ func validateResponsesForChat(raw map[string]interface{}) error {
 	if err := validateResponsesInputForChat(raw["input"]); err != nil {
 		return err
 	}
-	if tools, ok := raw["tools"].([]interface{}); ok {
-		for index, item := range tools {
-			tool, ok := item.(map[string]interface{})
-			if !ok || stringValue(tool["type"]) != "function" || stringValue(tool["name"]) == "" {
-				return fmt.Errorf("chat Responses tools[%d] built-in or malformed tool cannot be represented", index)
-			}
+	if tools, exists := raw["tools"]; exists && tools != nil {
+		if err := validateResponsesToolsForChat(tools); err != nil {
+			return err
 		}
 	}
 	if textValue, exists := raw["text"]; exists && textValue != nil {
@@ -203,17 +200,85 @@ func validateResponsesInputForChat(value interface{}) error {
 			if stringValue(entry["name"]) == "" {
 				return fmt.Errorf("input[%d].name is required", index)
 			}
-		case "function_call_output":
+		case "function_call_output", "custom_tool_call_output", "tool_search_output":
 			if stringValue(entry["call_id"]) == "" {
 				return fmt.Errorf("input[%d].call_id is required", index)
 			}
 		case "reasoning":
 			// Preserve this through the shared Responses-to-Chat converter.
+		case "custom_tool_call":
+			if stringValue(entry["name"]) == "" {
+				return fmt.Errorf("input[%d].name is required", index)
+			}
+		case "tool_search_call":
+			if stringValue(entry["call_id"]) == "" {
+				return fmt.Errorf("input[%d].call_id is required", index)
+			}
+		case "additional_tools":
+			if err := validateResponsesToolsForChat(entry["tools"]); err != nil {
+				return fmt.Errorf("input[%d]: %w", index, err)
+			}
 		default:
-			return fmt.Errorf("input[%d] type %q cannot be represented by Chat Completions", index, typ)
+			// Keep the compatibility path forward-compatible with new Responses
+			// item types that likewise have no Chat representation.
 		}
 	}
 	return nil
+}
+
+func validateResponsesToolsForChat(value interface{}) error {
+	tools, ok := value.([]interface{})
+	if !ok {
+		return fmt.Errorf("Chat Responses tools must be an array")
+	}
+	for index, item := range tools {
+		tool, ok := item.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("chat Responses tools[%d] malformed tool cannot be represented", index)
+		}
+		typ, _ := tool["type"].(string)
+		switch typ {
+		case "":
+			return fmt.Errorf("chat Responses tools[%d] malformed tool cannot be represented", index)
+		case "function", "custom":
+			name, _ := tool["name"].(string)
+			if strings.TrimSpace(name) == "" {
+				return fmt.Errorf("chat Responses tools[%d] malformed %s tool cannot be represented", index, typ)
+			}
+		case "namespace":
+			name, _ := tool["name"].(string)
+			if strings.TrimSpace(name) == "" {
+				return fmt.Errorf("chat Responses tools[%d] namespace name is required", index)
+			}
+			children := tool["tools"]
+			if children == nil {
+				children = tool["children"]
+			}
+			if err := validateResponsesNamespaceChildren(children); err != nil {
+				return fmt.Errorf("chat Responses tools[%d]: %w", index, err)
+			}
+		default:
+			// Responses built-in tools (web_search, file_search, computer_use,
+			// code_interpreter, MCP, and future variants) are intentionally
+			// dropped by the Chat conversion because Workers AI cannot execute
+			// them. Their presence must not reject an otherwise usable request.
+		}
+	}
+	return nil
+}
+
+func validateResponsesNamespaceChildren(value interface{}) error {
+	children, ok := value.([]interface{})
+	if !ok {
+		return fmt.Errorf("namespace tools must be an array")
+	}
+	for _, item := range children {
+		child, ok := item.(map[string]interface{})
+		if !ok || (child["type"] != "function" && child["type"] != "custom") {
+			return fmt.Errorf("namespace children must be function or custom tools")
+		}
+	}
+	return validateResponsesToolsForChat(children)
 }
 
 func validateResponsesChatContent(value interface{}, path string) error {
