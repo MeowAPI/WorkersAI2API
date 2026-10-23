@@ -174,6 +174,13 @@
       if (account.next) title.append(element('span', 'badge next-badge', 'NEXT'));
       identity.append(title, element('div', 'account-id', account.account_id));
       identity.append(element('div', 'account-token', `TOKEN ${account.token_hint || '••••••••'}`));
+      const userAgent = element('div', 'account-token', account.user_agent ? 'UA 已绑定' : 'UA 默认');
+      userAgent.title = account.user_agent || '默认 User-Agent';
+      identity.append(userAgent);
+      if (account.fingerprint) {
+        const profile = state.client_profiles?.fingerprints.find((item) => item.id === account.fingerprint);
+        identity.append(element('div', 'account-token', `TLS ${profile?.name || account.fingerprint}`));
+      }
       const statusCell = element('td');
       statusCell.dataset.label = '状态';
       const cooling = isCooling(account);
@@ -262,6 +269,12 @@
     $('account-dialog-title').textContent = account ? '编辑账号' : '添加账号';
     $('account-name').value = account?.name || '';
     $('account-id').value = account?.account_id || '';
+    $('account-user-agent').value = account?.user_agent || '';
+    const presets = state?.client_profiles?.presets || [];
+    $('account-ua-template').replaceChildren(new Option('自定义 UA · Go 默认传输', ''));
+    for (const preset of presets) $('account-ua-template').add(new Option(preset.name, preset.id));
+    $('account-ua-template').value = account?.fingerprint || presets.find((item) => !item.fingerprint && item.user_agent === (account?.user_agent || ''))?.id || '';
+    applyClientPreset();
     $('account-enabled').checked = account ? account.enabled : true;
     $('account-token').required = !account;
     $('account-token').placeholder = account ? '留空保留原密钥' : '输入 Cloudflare API Token';
@@ -269,6 +282,26 @@
     formError('account-error');
     $('account-dialog').showModal();
     $('account-name').focus();
+  }
+
+  function selectedClientPreset() {
+    return state?.client_profiles?.presets.find((item) => item.id === $('account-ua-template').value);
+  }
+
+  function applyClientPreset() {
+    const preset = selectedClientPreset();
+    if (preset) $('account-user-agent').value = preset.user_agent;
+    updateClientProfileHints();
+  }
+
+  function updateClientProfileHints() {
+    const preset = selectedClientPreset();
+    $('account-user-agent').readOnly = Boolean(preset);
+    $('account-ua-template-help').textContent = preset?.description || '自定义 UA 使用 Go 默认传输；不会叠加浏览器指纹。';
+    $('account-user-agent-help').textContent = preset ? 'UA 已随模板绑定；如需修改，请切换到自定义 UA。' : '随账号固定发送，不受客户端 UA 影响；留空使用 Go 默认 UA。';
+    const profile = state?.client_profiles?.fingerprints.find((item) => item.id === preset?.fingerprint);
+    $('account-fingerprint').value = profile?.name || 'Go 默认传输（未模拟客户端指纹）';
+    $('account-fingerprint-help').textContent = profile ? '已与对应浏览器 UA 绑定，不能单独混选。' : '未模拟 DeepSeek Harness 或 Claude Code 的专属指纹。';
   }
 
   function openDelete(account) {
@@ -392,6 +425,13 @@
   $('empty-add-account').addEventListener('click', () => openAccount());
   for (const button of document.querySelectorAll('[data-close-dialog]')) button.addEventListener('click', () => $(button.dataset.closeDialog).close());
   $('account-dialog').addEventListener('close', () => { $('account-token').value = ''; });
+  $('use-browser-user-agent').addEventListener('click', () => {
+    $('account-ua-template').value = '';
+    updateClientProfileHints();
+    $('account-user-agent').value = navigator.userAgent;
+    $('account-user-agent').focus();
+  });
+  $('account-ua-template').addEventListener('change', applyClientPreset);
 
   $('account-form').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -403,6 +443,8 @@
       name: $('account-name').value.trim(),
       account_id: $('account-id').value.trim(),
       api_token: $('account-token').value.trim(),
+      user_agent: $('account-user-agent').value,
+      fingerprint: selectedClientPreset()?.fingerprint || '',
       enabled: $('account-enabled').checked,
     };
     try {
@@ -710,6 +752,8 @@
     for (const [index, hop] of (log.upstream || []).entries()) {
       const details = element('details', 'upstream-hop');
       details.append(element('summary', 'mono', `${index + 1}. ${hop.path} · HTTP ${hop.status_code} · ${duration(hop.duration_ms)}`));
+      const profile = state?.client_profiles?.fingerprints.find((item) => item.id === hop.fingerprint);
+      details.append(element('p', 'cell-detail', `传输指纹：${profile?.name || hop.fingerprint || 'Go 默认传输'}`));
       if (hop.error) details.append(element('p', 'notice warning', hop.error));
       details.append(snapshotView('上游请求', hop.request), snapshotView('上游响应', hop.response)); upstream.append(details);
     }

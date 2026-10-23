@@ -133,7 +133,7 @@ func (s *Server) admin(w *responseWriter, r *http.Request) {
 		s.catalog.mu.RLock()
 		catalog := map[string]any{"count": len(s.catalog.routes), "last_attempt": s.catalog.lastAttempt, "last_success": s.catalog.lastSuccess, "last_error": s.catalog.lastError, "refresh_interval_seconds": 3600}
 		s.catalog.mu.RUnlock()
-		writeJSON(w, 200, map[string]any{"csrf_token": session.CSRF, "accounts": s.accounts.views(), "catalog": catalog, "started_at": s.startedAt, "routing": "round_robin"})
+		writeJSON(w, 200, map[string]any{"csrf_token": session.CSRF, "accounts": s.accounts.views(), "catalog": catalog, "client_profiles": clientProfileCatalog(), "started_at": s.startedAt, "routing": "round_robin"})
 	case r.URL.Path == "/admin/api/models" && r.Method == http.MethodGet:
 		// Copy routes and tasks under one lock to avoid mismatched refresh snapshots.
 		s.catalog.mu.RLock()

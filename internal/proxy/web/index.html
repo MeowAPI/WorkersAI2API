@@ -112,6 +112,13 @@
       <label for="account-name">账号名称</label><input id="account-name" name="name" maxlength="100" placeholder="例如：主账号" required autocomplete="off">
       <label for="account-id">Cloudflare Account ID</label><input id="account-id" name="account_id" class="mono" pattern="[a-fA-F0-9]{32}" title="请输入 32 位十六进制 Account ID" placeholder="32 位 Account ID" required autocomplete="off" spellcheck="false">
       <label for="account-token">API Token <span id="token-optional" class="label-hint" hidden>留空保留原密钥</span></label><input id="account-token" name="api_token" type="password" placeholder="输入 Cloudflare API Token" autocomplete="new-password">
+      <label for="account-ua-template">客户端模板 <span class="label-hint">UA 与传输绑定</span></label><select id="account-ua-template" aria-describedby="account-ua-template-help"><option value="">自定义 UA · Go 默认传输</option></select>
+      <p id="account-ua-template-help" class="cell-detail">选择模板后，同时使用其配套 UA 与传输配置。</p>
+      <label for="account-user-agent">User-Agent <span class="label-hint">可选，绑定此账号</span></label><input id="account-user-agent" name="user_agent" class="mono" maxlength="1024" placeholder="留空使用 Go 默认 UA" autocomplete="off" spellcheck="false" aria-describedby="account-user-agent-help">
+      <p id="account-user-agent-help" class="cell-detail">自定义模式可手动填写；模板模式使用绑定的 UA。</p>
+      <button id="use-browser-user-agent" type="button" class="text-button">使用当前浏览器 UA</button>
+      <label for="account-fingerprint">TLS / HTTP2 传输 <span class="label-hint">随模板确定</span></label><input id="account-fingerprint" class="mono" readonly value="Go 默认传输（未模拟客户端指纹）" aria-describedby="account-fingerprint-help">
+      <p id="account-fingerprint-help" class="cell-detail">传输与 UA 配套，不能单独混选。</p>
       <label class="checkbox-label"><input id="account-enabled" name="enabled" type="checkbox" checked><span>启用此账号，加入轮询</span></label>
       <p id="account-error" class="form-error" role="alert" hidden></p>
       <div class="dialog-actions"><button type="button" class="button secondary" data-close-dialog="account-dialog">取消</button><button id="save-account" type="submit" class="button primary">保存账号</button></div>

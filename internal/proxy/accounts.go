@@ -18,11 +18,13 @@ import (
 )
 
 type account struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	AccountID string `json:"account_id"`
-	APIToken  string `json:"api_token"`
-	Enabled   bool   `json:"enabled"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	AccountID   string `json:"account_id"`
+	APIToken    string `json:"api_token"`
+	UserAgent   string `json:"user_agent,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+	Enabled     bool   `json:"enabled"`
 }
 type accountStats struct {
 	Requests      uint64     `json:"requests"`
@@ -32,12 +34,14 @@ type accountStats struct {
 	CooldownUntil *time.Time `json:"cooldown_until"`
 }
 type accountView struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	AccountID string `json:"account_id"`
-	TokenHint string `json:"token_hint"`
-	Enabled   bool   `json:"enabled"`
-	Next      bool   `json:"next"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	AccountID   string `json:"account_id"`
+	TokenHint   string `json:"token_hint"`
+	UserAgent   string `json:"user_agent"`
+	Fingerprint string `json:"fingerprint"`
+	Enabled     bool   `json:"enabled"`
+	Next        bool   `json:"next"`
 	accountStats
 }
 type accountPool struct {
@@ -65,6 +69,23 @@ func validateAccount(a account) error {
 	if !validSecret(a.APIToken) || len(a.APIToken) > 4096 {
 		return invalid("API Token 不能为空、包含空白或超过 4096 字节")
 	}
+	if len(a.UserAgent) > 1024 {
+		return invalid("User-Agent 不能超过 1024 字节")
+	}
+	for i := 0; i < len(a.UserAgent); i++ {
+		if a.UserAgent[i] < 0x20 || a.UserAgent[i] > 0x7e {
+			return invalid("User-Agent 只能包含可打印的 ASCII 字符，不能包含换行或控制字符")
+		}
+	}
+	if a.Fingerprint != "" {
+		profile := findFingerprint(a.Fingerprint)
+		if profile == nil {
+			return invalid("不支持的 TLS/HTTP2 指纹，请从内置配置中选择")
+		}
+		if a.UserAgent != "" && a.UserAgent != profile.UserAgent {
+			return invalid("User-Agent 与指纹不匹配；请使用配套模板，或关闭指纹后自定义 UA")
+		}
+	}
 	return nil
 }
 func newAccountPool(c Config) (*accountPool, error) {
@@ -85,7 +106,12 @@ func newAccountPool(c Config) (*accountPool, error) {
 				return nil, fmt.Errorf("invalid account store; fix data/accounts.json before starting")
 			}
 			ids, accounts := map[string]bool{}, map[string]bool{}
-			for _, a := range disk.Accounts {
+			for i, a := range disk.Accounts {
+				// Legacy mixed pairs retain their explicit UA without browser impersonation.
+				if profile := findFingerprint(a.Fingerprint); profile != nil && a.UserAgent != "" && a.UserAgent != profile.UserAgent {
+					a.Fingerprint = ""
+					disk.Accounts[i] = a
+				}
 				if validateAccount(a) != nil || len(a.ID) != 64 || ids[a.ID] || accounts[strings.ToLower(a.AccountID)] {
 					return nil, fmt.Errorf("invalid or duplicate account in store")
 				}
@@ -168,7 +194,7 @@ func (p *accountPool) views() []accountView {
 		if len(a.APIToken) > 8 {
 			hint = "••••" + a.APIToken[len(a.APIToken)-4:]
 		}
-		v := accountView{ID: a.ID, Name: a.Name, AccountID: a.AccountID, TokenHint: hint, Enabled: a.Enabled, Next: a.ID == next}
+		v := accountView{ID: a.ID, Name: a.Name, AccountID: a.AccountID, TokenHint: hint, UserAgent: a.UserAgent, Fingerprint: a.Fingerprint, Enabled: a.Enabled, Next: a.ID == next}
 		if stats := p.stats[a.ID]; stats != nil {
 			v.accountStats = *stats
 		}
@@ -309,6 +335,10 @@ func (s *Server) upstream(ctx context.Context, w http.ResponseWriter, path, cont
 				req.Header.Add(name, value)
 			}
 		}
+		req.Header.Del("User-Agent")
+		if ua := a.effectiveUserAgent(); ua != "" {
+			req.Header.Set("User-Agent", ua)
+		}
 		attempted[a.ID] = a
 		if binding != nil {
 			binding.selected = &a
@@ -317,7 +347,12 @@ func (s *Server) upstream(ctx context.Context, w http.ResponseWriter, path, cont
 		if trace := traceFrom(ctx); trace != nil {
 			step = trace.beginUpstream(a, path, contentType, body, req.Header)
 		}
-		resp, err := s.client.Do(req)
+		var resp *http.Response
+		if a.Fingerprint == "" {
+			resp, err = s.client.Do(req)
+		} else {
+			resp, err = s.fingerprints.do(req, a)
+		}
 		if step != nil {
 			step.gotResponse(resp, err)
 		}
@@ -345,10 +380,12 @@ func redactAccountError(ctx context.Context, message string) string {
 
 // Mutations are serialized with selection and committed atomically to disk.
 type accountUpdate struct {
-	Name      *string `json:"name"`
-	AccountID *string `json:"account_id"`
-	APIToken  *string `json:"api_token"`
-	Enabled   *bool   `json:"enabled"`
+	Name        *string `json:"name"`
+	AccountID   *string `json:"account_id"`
+	APIToken    *string `json:"api_token"`
+	UserAgent   *string `json:"user_agent"`
+	Fingerprint *string `json:"fingerprint"`
+	Enabled     *bool   `json:"enabled"`
 }
 
 func (p *accountPool) update(id string, patch accountUpdate, remove bool) (string, error) {
@@ -383,8 +420,17 @@ func (p *accountPool) update(id string, patch accountUpdate, remove bool) (strin
 		if patch.APIToken != nil && *patch.APIToken != "" {
 			a.APIToken = *patch.APIToken
 		}
+		if patch.UserAgent != nil {
+			a.UserAgent = strings.Trim(*patch.UserAgent, " ")
+		}
+		if patch.Fingerprint != nil {
+			a.Fingerprint = *patch.Fingerprint
+		}
 		if patch.Enabled != nil {
 			a.Enabled = *patch.Enabled
+		}
+		if err := bindAccountFingerprint(&a, patch); err != nil {
+			return "", err
 		}
 		if err := validateAccount(a); err != nil {
 			return "", err

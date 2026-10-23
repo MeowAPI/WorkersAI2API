@@ -16,6 +16,7 @@ import (
 type Server struct {
 	cfg             Config
 	client          *http.Client
+	fingerprints    fingerprintPool
 	catalogClient   *http.Client
 	catalog         *modelCatalog
 	imageFiles      imageStore

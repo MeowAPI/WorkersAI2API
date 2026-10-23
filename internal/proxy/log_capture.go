@@ -383,15 +383,17 @@ func payloadSnapshot(c *bodyCapture, headers http.Header, secrets []string) logP
 }
 
 type upstreamLog struct {
-	Path       string     `json:"path"`
-	Status     int        `json:"status_code"`
-	DurationMS float64    `json:"duration_ms"`
-	Error      string     `json:"error"`
-	Request    logPayload `json:"request"`
-	Response   logPayload `json:"response"`
+	Path        string     `json:"path"`
+	Fingerprint string     `json:"fingerprint,omitempty"`
+	Status      int        `json:"status_code"`
+	DurationMS  float64    `json:"duration_ms"`
+	Error       string     `json:"error"`
+	Request     logPayload `json:"request"`
+	Response    logPayload `json:"response"`
 }
 type upstreamTrace struct {
 	path            string
+	fingerprint     string
 	started         time.Time
 	finished        time.Time
 	status          int

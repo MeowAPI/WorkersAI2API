@@ -22,7 +22,10 @@ jobs:
 
       - name: Run Go tests and vet
         run: |
-          docker run --rm --network none -v "$PWD:/src:ro" -w /src golang:1.26 \
+          docker volume create workersai-go-mod
+          docker run --rm -v "$PWD:/src:ro" -v workersai-go-mod:/go/pkg/mod -w /src golang:1.26 \
+            go mod download
+          docker run --rm --network none -v "$PWD:/src:ro" -v workersai-go-mod:/go/pkg/mod:ro -w /src golang:1.26 \
             sh -c 'go test -race ./... && go vet ./...'
 
       - name: Set up QEMU

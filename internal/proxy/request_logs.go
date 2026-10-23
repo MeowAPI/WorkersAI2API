@@ -161,7 +161,7 @@ func (s *Server) endTrace(trace *requestTrace, r *http.Request, aborted bool) {
 		if finished.IsZero() {
 			finished = trace.summary.Finished
 		}
-		entry.Upstream = append(entry.Upstream, upstreamLog{Path: safeURL(step.path, trace.secrets), Status: step.status, DurationMS: float64(finished.Sub(step.started).Microseconds()) / 1000, Error: maskText(step.errorText, trace.secrets), Request: payloadSnapshot(&step.request, step.requestHeaders, trace.secrets), Response: payloadSnapshot(&step.response, step.responseHeaders, trace.secrets)})
+		entry.Upstream = append(entry.Upstream, upstreamLog{Path: safeURL(step.path, trace.secrets), Fingerprint: step.fingerprint, Status: step.status, DurationMS: float64(finished.Sub(step.started).Microseconds()) / 1000, Error: maskText(step.errorText, trace.secrets), Request: payloadSnapshot(&step.request, step.requestHeaders, trace.secrets), Response: payloadSnapshot(&step.response, step.responseHeaders, trace.secrets)})
 	}
 	trace.summary.UpstreamCalls = len(trace.steps)
 	trace.summary.Error = maskText(trace.summary.Error, trace.secrets)
@@ -201,7 +201,7 @@ func (trace *requestTrace) beginUpstream(a account, path, contentType string, bo
 	trace.summary.AccountID = a.ID
 	trace.summary.AccountName = a.Name
 	trace.secrets = append(trace.secrets, a.APIToken)
-	step := &upstreamTrace{path: path, started: time.Now(), requestHeaders: headers.Clone()}
+	step := &upstreamTrace{path: path, fingerprint: a.Fingerprint, started: time.Now(), requestHeaders: headers.Clone()}
 	step.request.contentType = contentType
 	step.request.Write(body)
 	trace.steps = append(trace.steps, step)

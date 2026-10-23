@@ -2,7 +2,7 @@
 
 将 Cloudflare Workers AI 接入常见 API 客户端。客户端使用标准 Chat Completions、Responses、Messages、Images、Audio、Embeddings 接口，模型名统一使用 `kimi-k2.7-code`、`flux-1-schnell`、`aura-1` 等短名称。无需客户端理解 Cloudflare 的 `/run/` 请求或响应格式。
 
-Go 1.25+，无第三方 Go 依赖。Cloudflare `/ai/run/...` 仅作为服务内部上游，不对外提供该路由。
+Go 1.25+。TLS/HTTP2 指纹功能使用锁定版本的 `tls-client` / `fhttp`，依赖由 Go Modules 管理，支持 `CGO_ENABLED=0` 构建。Cloudflare `/ai/run/...` 仅作为服务内部上游，不对外提供该路由。
 
 ## 启动
 
@@ -45,11 +45,26 @@ Compose 使用命名卷 `workersai-data` 保存账号和请求日志；重建容
 ## 多账号和管理页面
 
 - **账号管理**：新增、修改、停用、启用、删除，保存后立即生效。修改账号时 Token 留空保留原值。页面只显示密钥末尾提示，不回传完整密钥。最多 100 个账号，每个 Account ID 一条。
+- **账号 UA**：添加或编辑账号时，通过统一“客户端模板”选择配套的 UA 与传输；自定义模式可手动填写 UA，或点击“使用当前浏览器 UA”。该账号的所有推理请求（包括流式、图片、音频及 `429` 重试）使用绑定的 UA，切换账号时同步切换，不透传客户端 UA。配置保存到 `data/accounts.json` 的 `user_agent` 字段，重启后保留。最多 1024 字节，仅接受可打印 ASCII 字符。管理 API 的 `POST /admin/api/accounts`、`PATCH /admin/api/accounts/{id}` 支持此字段：PATCH 省略时保留；传空字符串时，自定义模式清除 UA，浏览器模板恢复其配套 UA。未启用指纹且 UA 为空时保留 Go 原有行为。
+- **TLS/HTTP2 指纹**：通过一个“客户端模板”同时绑定 UA 和传输配置。Chrome 152、Firefox 147、Safari iOS 18 分别配套其浏览器 UA 与 TLS ClientHello、HTTP/2 SETTINGS、连接窗口和伪头顺序，不允许单独混选。配置保存于 `fingerprint` 字段（`chrome_152` / `firefox_147` / `safari_ios_18_0`）；API 只提交指纹时会自动填入配套 UA，同时提交不匹配的 UA 和指纹会返回 `400`。只修改 UA 为非配套值时自动切换为自定义 UA / Go 默认传输。模拟客户端按账号、指纹和环境代理隔离连接缓存；不使用 Cookie jar，不跟随重定向，保留证书校验、请求取消、流式转发和原有重试规则。缓存最多 100 组，淘汰时关闭空闲连接。HTTP/3 未启用。此功能不保证避免上游风控，也不模拟浏览器页面、设备信息或 JavaScript 环境。
 - **轮询**：所有推理入口共用账号池，按请求依次选择启用且未冷却的账号；同一请求的多张图片复用所选账号，遇到 `429` 时切换账号，后续图片沿用切换后的账号。正在进行的请求保留已选账号的凭据，不受编辑影响。
 - **冷却和重试**：上游 `429` 按 `Retry-After` 冷却（缺失时 60 秒，最多 24 小时），并立即使用其他启用且未冷却的账号重试当前上游调用；同一请求不会回头重试已经尝试过的账号。只有没有其他可重试账号时才返回最后一次 `429`，保留 `Retry-After`；请求开始时就没有可用账号则返回 `503`，有冷却账号时附 `Retry-After`。`401/403` 冷却 60 秒，网络异常与 `5xx` 冷却 15 秒，这些错误不自动重试。请求取消或超时后停止切换账号。
 - **账号运行状态**：显示下一个账号、上游请求数、失败数、最近 HTTP 状态和冷却时间。账号页计数以实际上游调用为单位，一次多图请求可能计多次；这些运行计数在进程重启后归零，统计概览和请求日志的数据则会保留。新增账号校验输入格式，实际权限和配额以调用结果为准。
 - **模型目录**：短名称搜索、任务筛选、完整上游 ID、可用标准端点和同步结果。启动即使用内置快照，网络失败保留上一份目录。
 - **管理登录**：使用 HttpOnly、SameSite=Strict 的 24 小时会话 Cookie，写操作另做 CSRF 校验；HTTPS 下 Cookie 标记 Secure。退出或进程重启使会话失效。客户端推理仍使用 API Key，不接受管理 Cookie。
+
+### UA 模板的范围
+
+| 模板 | 固定样例 |
+| --- | --- |
+| DeepSeek Harness | `deepseek-harness/0.2.1-rc.2 (+https://github.com/deepseek-ai/deepseek-harness)` |
+| Claude Code | `claude-cli/2.1.0 (external, cli)` |
+
+DeepSeek 格式来自官方仓库的 [`attribution.ts`](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/llm/llm/src/attribution.ts)；Claude Code 格式依据已发布的 `@anthropic-ai/claude-code@2.1.0` 包。模板采用固定版本，不声称是最新版本，选择后仍可手动修改。保存的是 UA 字符串，不依赖模板名称。
+
+**这两个模板绑定各自 UA 与 Go 默认传输，不表示已经复现 DeepSeek Harness 或 Claude Code 的专属指纹。** 精确复现需要对应版本、平台和运行时的真实握手数据。选择其中之一会同时关闭浏览器模拟，避免出现 Claude Code UA 搭配 Firefox 指纹等混合配置。模板的 UA 和传输只读；需要修改 UA 版本时切换到“自定义 UA · Go 默认传输”。请求日志的每次上游调用会显示实际采用的指纹配置及请求 UA。
+
+兼容旧账号文件：原有配套的浏览器 UA / 指纹保持生效；遇到不匹配的组合时保留原 UA 并在内存中关闭浏览器指纹，不影响启动、密钥和启停状态。读取时不改写文件，下次保存账号配置时一并持久化修正。
 
 ## 请求日志、统计和主题
 
@@ -178,6 +193,8 @@ go build -trimpath -o bin/workersai2api .
 ```
 
 测试覆盖`.env` 加载与环境覆盖、多账号并发轮询/冷却/持久化、管理鉴权/CSRF/增删改、短名称路由、目录同步、聊天转换、Images JSON/multipart/URL、Speech 二进制/Base64、转写格式、Rerank 索引排序、参数校验及旧 `/ai/run/...` 端点返回 404。SDK 端到端验证使用标准 OpenAI JavaScript SDK 调用本地代理。
+
+UA/指纹验证包括 HTTP/1.1 与 HTTP/2 默认 UA 兼容、自定义 UA 持久化/清空/输入校验、三个浏览器配置的真实 TLS 密码套件顺序及 HTTP/2 SETTINGS/窗口/伪头顺序、流式首块及时返回、取消中断、重定向阻止、证书校验、Cookie 不保留、账号/指纹/代理连接隔离、缓存上限和多图 `429` 切换后的账号绑定。
 
 本次管理功能验证还包括：桌面/手机浏览器登录与账号增删改、停用/启用、模型筛选和真实目录刷新；延迟状态响应不恢复已退出的会话；容器以非 root 用户运行、保存账号，以及删除重建容器后从命名卷恢复账号。多账号轮询与冷却使用模拟上游检查账号 ID、Token 配对和请求顺序。
 

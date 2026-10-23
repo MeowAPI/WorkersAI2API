@@ -132,6 +132,9 @@ func TestAccount429RetriesAcrossProtocolsAndMedia(t *testing.T) {
 			var lastID string
 			for _, letter := range []string{"a", "b", "c"} {
 				lastID = addTestAccount(t, s, strings.Repeat(letter, 32), "secret-"+letter)
+				if _, err := s.accounts.update(lastID, accountUpdate{UserAgent: ptr("Account-" + letter + "/1.0")}, false); err != nil {
+					t.Fatal(err)
+				}
 			}
 			s.catalog.routes = map[string]string{"model": "@cf/test/model", "test": "@cf/test/model"}
 			calls := 0
@@ -158,6 +161,9 @@ func TestAccount429RetriesAcrossProtocolsAndMedia(t *testing.T) {
 				wantPath := "/client/v4/accounts/" + strings.Repeat(letter, 32) + "/ai" + firstPath
 				if r.Method != http.MethodPost || r.URL.Path != wantPath || r.Header.Get("Authorization") != "Bearer secret-"+letter {
 					t.Error("retry used the wrong account or route", r.URL.Path)
+				}
+				if r.UserAgent() != "Account-"+letter+"/1.0" {
+					t.Error("retry used the wrong account User-Agent", r.UserAgent())
 				}
 				if string(data) != firstBody || r.Header.Get("Content-Type") != firstContentType || r.Header.Get("Accept") != firstAccept {
 					t.Error("retry changed the request")
@@ -209,6 +215,9 @@ func TestAccount429RetriesAcrossProtocolsAndMedia(t *testing.T) {
 				}
 				if strings.Contains(step.Response.Text, "secret-") {
 					t.Error("retry log leaked an account token")
+				}
+				if got := http.Header(step.Request.Headers).Get("User-Agent"); got != "Account-"+string(rune('a'+i))+"/1.0" {
+					t.Error("retry log recorded the wrong User-Agent", got)
 				}
 			}
 		})
@@ -393,9 +402,14 @@ func TestAccount429RetryKeepsBatchBindingAndMultipartBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	addTestAccount(t, s, strings.Repeat("a", 32), "secret-a")
+	first := addTestAccount(t, s, strings.Repeat("a", 32), "secret-a")
 	second := addTestAccount(t, s, strings.Repeat("b", 32), "secret-b")
 	addTestAccount(t, s, strings.Repeat("c", 32), "secret-c")
+	for id, ua := range map[string]string{first: "Account-a/1.0", second: "Account-b/1.0"} {
+		if _, err := s.accounts.update(id, accountUpdate{UserAgent: &ua}, false); err != nil {
+			t.Fatal(err)
+		}
+	}
 	binding := &accountBinding{}
 	ctx := context.WithValue(context.Background(), accountBindingKey{}, binding)
 	body := []byte("--test-boundary\r\nContent-Disposition: form-data; name=\"prompt\"\r\n\r\nhello\r\n--test-boundary--\r\n")
@@ -406,6 +420,13 @@ func TestAccount429RetryKeepsBatchBindingAndMultipartBody(t *testing.T) {
 		wantToken := "secret-a"
 		if calls > 2 {
 			wantToken = "secret-b"
+		}
+		wantUA := "Account-a/1.0"
+		if calls > 2 {
+			wantUA = "Account-b/1.0"
+		}
+		if r.UserAgent() != wantUA {
+			t.Error("batch retry used the wrong account User-Agent", r.UserAgent())
 		}
 		data, err := io.ReadAll(r.Body)
 		if err != nil || string(data) != string(body) || r.Header.Get("Content-Type") != contentType || r.Header.Get("Authorization") != "Bearer "+wantToken {
