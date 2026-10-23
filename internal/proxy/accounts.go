@@ -177,6 +177,9 @@ func (p *accountPool) views() []accountView {
 	return views
 }
 func (p *accountPool) selectAccount(w http.ResponseWriter) (account, error) {
+	return p.selectAccountExcluding(w, nil)
+}
+func (p *accountPool) selectAccountExcluding(w http.ResponseWriter, attempted map[string]account) (account, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	now := time.Now()
@@ -184,7 +187,7 @@ func (p *accountPool) selectAccount(w http.ResponseWriter) (account, error) {
 	for n := 0; n < len(p.accounts); n++ {
 		index := (p.cursor + n) % len(p.accounts)
 		a := p.accounts[index]
-		if p.available(a, now) {
+		if _, tried := attempted[a.ID]; !tried && p.available(a, now) {
 			p.cursor = (index + 1) % len(p.accounts)
 			return a, nil
 		}
@@ -263,52 +266,79 @@ func (p *accountPool) record(a account, resp *http.Response, err error) {
 }
 
 type accountBindingKey struct{}
-type accountBinding struct{ selected *account }
+type accountBinding struct {
+	selected  *account
+	attempted map[string]account
+}
 
 func (s *Server) upstream(ctx context.Context, w http.ResponseWriter, path, contentType, accept string, body []byte, extraHeaders http.Header) (*http.Response, error) {
 	binding, _ := ctx.Value(accountBindingKey{}).(*accountBinding)
+	attempted := map[string]account{}
+	if binding != nil {
+		if binding.attempted == nil {
+			binding.attempted = attempted
+		}
+		attempted = binding.attempted
+	}
 	var a account
 	if binding != nil && binding.selected != nil {
 		a = *binding.selected
 	} else {
 		var err error
-		a, err = s.accounts.selectAccount(w)
+		a, err = s.accounts.selectAccountExcluding(w, attempted)
 		if err != nil {
 			return nil, err
 		}
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		base := "https://api.cloudflare.com/client/v4/accounts/" + a.AccountID + "/ai"
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+a.APIToken)
+		req.Header.Set("Content-Type", contentType)
+		if accept != "" {
+			req.Header.Set("Accept", accept)
+		}
+		for name, values := range extraHeaders {
+			for _, value := range values {
+				req.Header.Add(name, value)
+			}
+		}
+		attempted[a.ID] = a
 		if binding != nil {
 			binding.selected = &a
 		}
-	}
-	base := "https://api.cloudflare.com/client/v4/accounts/" + a.AccountID + "/ai"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+a.APIToken)
-	req.Header.Set("Content-Type", contentType)
-	if accept != "" {
-		req.Header.Set("Accept", accept)
-	}
-	for name, values := range extraHeaders {
-		for _, value := range values {
-			req.Header.Add(name, value)
+		var step *upstreamTrace
+		if trace := traceFrom(ctx); trace != nil {
+			step = trace.beginUpstream(a, path, contentType, body, req.Header)
 		}
+		resp, err := s.client.Do(req)
+		if step != nil {
+			step.gotResponse(resp, err)
+		}
+		s.accounts.record(a, resp, err)
+		if err != nil || resp.StatusCode != http.StatusTooManyRequests || ctx.Err() != nil {
+			return resp, err
+		}
+		next, err := s.accounts.selectAccountExcluding(w, attempted)
+		if err != nil {
+			return resp, nil
+		}
+		// Release rejected responses without waiting for their bodies.
+		resp.Body.Close()
+		a = next
 	}
-	var step *upstreamTrace
-	if trace := traceFrom(ctx); trace != nil {
-		step = trace.beginUpstream(a, path, contentType, body, req.Header)
-	}
-	resp, err := s.client.Do(req)
-	if step != nil {
-		step.gotResponse(resp, err)
-	}
-	s.accounts.record(a, resp, err)
-	return resp, err
 }
 func redactAccountError(ctx context.Context, message string) string {
-	if binding, ok := ctx.Value(accountBindingKey{}).(*accountBinding); ok && binding.selected != nil {
-		return strings.ReplaceAll(message, binding.selected.APIToken, "[redacted]")
+	if binding, ok := ctx.Value(accountBindingKey{}).(*accountBinding); ok {
+		for _, a := range binding.attempted {
+			message = strings.ReplaceAll(message, a.APIToken, "[redacted]")
+		}
 	}
 	return message
 }
