@@ -315,16 +315,17 @@ func TestFingerprintRetryAndAccountBinding(t *testing.T) {
 	}
 	first := addTestAccount(t, s, strings.Repeat("a", 32), "secret-a")
 	second := addTestAccount(t, s, strings.Repeat("b", 32), "secret-b")
-	if _, err := s.accounts.update(first, accountUpdate{Fingerprint: ptr("chrome_152")}, false); err != nil {
+	if _, err := s.accounts.update(first, accountUpdate{Fingerprint: ptr("chrome_152"), ProxyURL: ptr("http://first.example:8080")}, false); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.accounts.update(second, accountUpdate{Fingerprint: ptr("firefox_147")}, false); err != nil {
+	if _, err := s.accounts.update(second, accountUpdate{Fingerprint: ptr("firefox_147"), ProxyURL: ptr("socks5://second.example:1080")}, false); err != nil {
 		t.Fatal(err)
 	}
-	var profiles []string
-	s.fingerprints.newClient = func(profileID, _ string) (fingerprintClient, error) {
+	var profiles, proxies []string
+	s.fingerprints.newClient = func(profileID, proxyURL string) (fingerprintClient, error) {
 		return &fakeFingerprintClient{do: func(r *fhttp.Request) (*fhttp.Response, error) {
 			profiles = append(profiles, profileID)
+			proxies = append(proxies, proxyURL)
 			status := 200
 			token, ua := "secret-b", findFingerprint(profileID).UserAgent
 			if len(profiles) == 1 {
@@ -350,13 +351,16 @@ func TestFingerprintRetryAndAccountBinding(t *testing.T) {
 		}
 		resp.Body.Close()
 		if i == 0 {
-			if _, err := s.accounts.update(second, accountUpdate{Fingerprint: ptr("safari_ios_18_0")}, false); err != nil {
+			if _, err := s.accounts.update(second, accountUpdate{Fingerprint: ptr("safari_ios_18_0"), ProxyURL: ptr("http://changed.example:8080")}, false); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
 	if strings.Join(profiles, ",") != "chrome_152,firefox_147,firefox_147,firefox_147" {
 		t.Fatal("retry or live edit changed bound fingerprint", profiles)
+	}
+	if strings.Join(proxies, ",") != "http://first.example:8080,socks5://second.example:1080,socks5://second.example:1080,socks5://second.example:1080" {
+		t.Fatal("retry or live edit changed bound proxy", proxies)
 	}
 	if len(trace.steps) != len(profiles) {
 		t.Fatal("fingerprint calls missing from request trace")

@@ -48,7 +48,11 @@ func newFingerprintClient(profileID, proxyURL string, options ...tlsclient.HttpC
 		}),
 	}
 	if proxyURL != "" {
-		base = append(base, tlsclient.WithProxyUrl(proxyURL))
+		proxyDialer, err := fingerprintProxyDialer(proxyURL, dialer, nil)
+		if err != nil {
+			return nil, err
+		}
+		base = append(base, tlsclient.WithDialContext(proxyDialer))
 	} else {
 		base = append(base, tlsclient.WithDialContext(dialer.DialContext))
 	}
@@ -98,11 +102,9 @@ func (p *fingerprintPool) get(a account, proxyURL string) (fingerprintClient, er
 }
 
 func (p *fingerprintPool) do(req *http.Request, a account) (*http.Response, error) {
-	proxyURL := ""
-	if proxy, err := http.ProxyFromEnvironment(req); err != nil {
-		return nil, fmt.Errorf("invalid upstream proxy")
-	} else if proxy != nil {
-		proxyURL = proxy.String()
+	proxyURL, err := accountProxyURL(req, a)
+	if err != nil {
+		return nil, err
 	}
 	client, err := p.get(a, proxyURL)
 	if err != nil {

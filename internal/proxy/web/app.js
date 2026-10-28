@@ -49,6 +49,7 @@
     clearTimeout(searchTimer);
     for (const dialog of document.querySelectorAll('dialog[open]')) dialog.close();
     $('account-token').value = '';
+    $('account-proxy').value = '';
     $('app-view').hidden = true;
     $('login-view').hidden = false;
     formError('login-error', message);
@@ -181,6 +182,9 @@
         const profile = state.client_profiles?.fingerprints.find((item) => item.id === account.fingerprint);
         identity.append(element('div', 'account-token', `TLS ${profile?.name || account.fingerprint}`));
       }
+      const proxy = element('div', 'account-token', account.proxy_hint ? `代理 ${account.proxy_hint}` : '代理 默认网络');
+      proxy.title = account.proxy_hint || '使用服务环境代理或直连';
+      identity.append(proxy);
       const statusCell = element('td');
       statusCell.dataset.label = '状态';
       const cooling = isCooling(account);
@@ -279,6 +283,12 @@
     $('account-token').required = !account;
     $('account-token').placeholder = account ? '留空保留原密钥' : '输入 Cloudflare API Token';
     $('token-optional').hidden = !account;
+    $('account-proxy').disabled = false;
+    $('account-proxy').placeholder = account?.proxy_hint ? '留空保留已绑定代理，填写新地址可替换' : 'http://127.0.0.1:7890';
+    $('account-proxy-help').textContent = account?.proxy_hint
+      ? `已绑定 ${account.proxy_hint}（凭据不回显）。留空保留；可输入新地址替换，或勾选下方清除。`
+      : '支持 http://、https://、socks5://、socks5h://，可包含用户名和密码；留空使用服务环境代理或直连。';
+    $('account-proxy-clear-label').hidden = !account?.proxy_hint;
     formError('account-error');
     $('account-dialog').showModal();
     $('account-name').focus();
@@ -424,7 +434,10 @@
   $('add-account').addEventListener('click', () => openAccount());
   $('empty-add-account').addEventListener('click', () => openAccount());
   for (const button of document.querySelectorAll('[data-close-dialog]')) button.addEventListener('click', () => $(button.dataset.closeDialog).close());
-  $('account-dialog').addEventListener('close', () => { $('account-token').value = ''; });
+  $('account-dialog').addEventListener('close', () => { $('account-token').value = ''; $('account-proxy').value = ''; });
+  $('account-proxy-clear').addEventListener('change', () => {
+    $('account-proxy').disabled = $('account-proxy-clear').checked;
+  });
   $('use-browser-user-agent').addEventListener('click', () => {
     $('account-ua-template').value = '';
     updateClientProfileHints();
@@ -447,6 +460,9 @@
       fingerprint: selectedClientPreset()?.fingerprint || '',
       enabled: $('account-enabled').checked,
     };
+    const proxyURL = $('account-proxy').value.trim();
+    if ($('account-proxy-clear').checked) body.proxy_url = '';
+    else if (!editingID || proxyURL) body.proxy_url = proxyURL;
     try {
       await api(editingID ? `/accounts/${encodeURIComponent(editingID)}` : '/accounts', { method: editingID ? 'PATCH' : 'POST', body });
       $('account-dialog').close();

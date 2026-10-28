@@ -16,6 +16,7 @@ import (
 type Server struct {
 	cfg             Config
 	client          *http.Client
+	proxies         accountProxyPool
 	fingerprints    fingerprintPool
 	catalogClient   *http.Client
 	catalog         *modelCatalog

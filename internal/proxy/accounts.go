@@ -24,6 +24,7 @@ type account struct {
 	APIToken    string `json:"api_token"`
 	UserAgent   string `json:"user_agent,omitempty"`
 	Fingerprint string `json:"fingerprint,omitempty"`
+	ProxyURL    string `json:"proxy_url,omitempty"`
 	Enabled     bool   `json:"enabled"`
 }
 type accountStats struct {
@@ -40,6 +41,7 @@ type accountView struct {
 	TokenHint   string `json:"token_hint"`
 	UserAgent   string `json:"user_agent"`
 	Fingerprint string `json:"fingerprint"`
+	ProxyHint   string `json:"proxy_hint"`
 	Enabled     bool   `json:"enabled"`
 	Next        bool   `json:"next"`
 	accountStats
@@ -86,6 +88,9 @@ func validateAccount(a account) error {
 			return invalid("User-Agent 与指纹不匹配；请使用配套模板，或关闭指纹后自定义 UA")
 		}
 	}
+	if _, err := normalizeAccountProxy(a.ProxyURL); err != nil {
+		return err
+	}
 	return nil
 }
 func newAccountPool(c Config) (*accountPool, error) {
@@ -107,11 +112,16 @@ func newAccountPool(c Config) (*accountPool, error) {
 			}
 			ids, accounts := map[string]bool{}, map[string]bool{}
 			for i, a := range disk.Accounts {
+				proxyURL, err := normalizeAccountProxy(a.ProxyURL)
+				if err != nil {
+					return nil, fmt.Errorf("invalid account proxy in store")
+				}
+				a.ProxyURL = proxyURL
 				// Legacy mixed pairs retain their explicit UA without browser impersonation.
 				if profile := findFingerprint(a.Fingerprint); profile != nil && a.UserAgent != "" && a.UserAgent != profile.UserAgent {
 					a.Fingerprint = ""
-					disk.Accounts[i] = a
 				}
+				disk.Accounts[i] = a
 				if validateAccount(a) != nil || len(a.ID) != 64 || ids[a.ID] || accounts[strings.ToLower(a.AccountID)] {
 					return nil, fmt.Errorf("invalid or duplicate account in store")
 				}
@@ -194,7 +204,7 @@ func (p *accountPool) views() []accountView {
 		if len(a.APIToken) > 8 {
 			hint = "••••" + a.APIToken[len(a.APIToken)-4:]
 		}
-		v := accountView{ID: a.ID, Name: a.Name, AccountID: a.AccountID, TokenHint: hint, UserAgent: a.UserAgent, Fingerprint: a.Fingerprint, Enabled: a.Enabled, Next: a.ID == next}
+		v := accountView{ID: a.ID, Name: a.Name, AccountID: a.AccountID, TokenHint: hint, UserAgent: a.UserAgent, Fingerprint: a.Fingerprint, ProxyHint: a.proxyHint(), Enabled: a.Enabled, Next: a.ID == next}
 		if stats := p.stats[a.ID]; stats != nil {
 			v.accountStats = *stats
 		}
@@ -237,7 +247,7 @@ func (p *accountPool) record(a account, resp *http.Response, err error) {
 	defer p.mu.Unlock()
 	found := false
 	for _, current := range p.accounts {
-		if current.ID == a.ID && current.APIToken == a.APIToken && current.AccountID == a.AccountID {
+		if current.ID == a.ID && current.APIToken == a.APIToken && current.AccountID == a.AccountID && current.ProxyURL == a.ProxyURL {
 			found = true
 			break
 		}
@@ -349,7 +359,7 @@ func (s *Server) upstream(ctx context.Context, w http.ResponseWriter, path, cont
 		}
 		var resp *http.Response
 		if a.Fingerprint == "" {
-			resp, err = s.client.Do(req)
+			resp, err = s.proxies.do(req, a, s.client)
 		} else {
 			resp, err = s.fingerprints.do(req, a)
 		}
@@ -372,7 +382,7 @@ func (s *Server) upstream(ctx context.Context, w http.ResponseWriter, path, cont
 func redactAccountError(ctx context.Context, message string) string {
 	if binding, ok := ctx.Value(accountBindingKey{}).(*accountBinding); ok {
 		for _, a := range binding.attempted {
-			message = strings.ReplaceAll(message, a.APIToken, "[redacted]")
+			message = maskText(message, a.secrets())
 		}
 	}
 	return message
@@ -385,6 +395,7 @@ type accountUpdate struct {
 	APIToken    *string `json:"api_token"`
 	UserAgent   *string `json:"user_agent"`
 	Fingerprint *string `json:"fingerprint"`
+	ProxyURL    *string `json:"proxy_url"`
 	Enabled     *bool   `json:"enabled"`
 }
 
@@ -426,6 +437,13 @@ func (p *accountPool) update(id string, patch accountUpdate, remove bool) (strin
 		if patch.Fingerprint != nil {
 			a.Fingerprint = *patch.Fingerprint
 		}
+		if patch.ProxyURL != nil {
+			proxyURL, err := normalizeAccountProxy(*patch.ProxyURL)
+			if err != nil {
+				return "", err
+			}
+			a.ProxyURL = proxyURL
+		}
 		if patch.Enabled != nil {
 			a.Enabled = *patch.Enabled
 		}
@@ -458,7 +476,7 @@ func (p *accountPool) update(id string, patch accountUpdate, remove bool) (strin
 	}
 	if remove {
 		delete(p.stats, id)
-	} else if patch.APIToken != nil && *patch.APIToken != "" || patch.AccountID != nil || patch.Enabled != nil && *patch.Enabled {
+	} else if patch.APIToken != nil && *patch.APIToken != "" || patch.AccountID != nil || patch.ProxyURL != nil || patch.Enabled != nil && *patch.Enabled {
 		if stats := p.stats[id]; stats != nil {
 			stats.CooldownUntil = nil
 		}

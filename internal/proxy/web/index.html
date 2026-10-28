@@ -119,6 +119,9 @@
       <button id="use-browser-user-agent" type="button" class="text-button">使用当前浏览器 UA</button>
       <label for="account-fingerprint">TLS / HTTP2 传输 <span class="label-hint">随模板确定</span></label><input id="account-fingerprint" class="mono" readonly value="Go 默认传输（未模拟客户端指纹）" aria-describedby="account-fingerprint-help">
       <p id="account-fingerprint-help" class="cell-detail">传输与 UA 配套，不能单独混选。</p>
+      <label for="account-proxy">代理地址 <span class="label-hint">可选，绑定此账号</span></label><input id="account-proxy" name="proxy_url" type="password" class="mono" maxlength="4096" placeholder="http://127.0.0.1:7890" autocomplete="new-password" spellcheck="false" aria-describedby="account-proxy-help">
+      <p id="account-proxy-help" class="cell-detail">支持 HTTP、HTTPS、SOCKS5，可填写用户名和密码；留空使用服务环境代理或直连。</p>
+      <label id="account-proxy-clear-label" class="checkbox-label" hidden><input id="account-proxy-clear" type="checkbox"><span>清除已绑定代理，恢复默认网络设置</span></label>
       <label class="checkbox-label"><input id="account-enabled" name="enabled" type="checkbox" checked><span>启用此账号，加入轮询</span></label>
       <p id="account-error" class="form-error" role="alert" hidden></p>
       <div class="dialog-actions"><button type="button" class="button secondary" data-close-dialog="account-dialog">取消</button><button id="save-account" type="submit" class="button primary">保存账号</button></div>

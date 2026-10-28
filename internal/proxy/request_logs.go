@@ -130,7 +130,7 @@ func (s *Server) endTrace(trace *requestTrace, r *http.Request, aborted bool) {
 	}
 	s.accounts.mu.Lock()
 	for _, a := range s.accounts.accounts {
-		trace.secrets = append(trace.secrets, a.APIToken)
+		trace.secrets = append(trace.secrets, a.secrets()...)
 	}
 	s.accounts.mu.Unlock()
 	// Catch model fields even on local validation failures before routing.
@@ -200,7 +200,7 @@ func (s *Server) endTrace(trace *requestTrace, r *http.Request, aborted bool) {
 func (trace *requestTrace) beginUpstream(a account, path, contentType string, body []byte, headers http.Header) *upstreamTrace {
 	trace.summary.AccountID = a.ID
 	trace.summary.AccountName = a.Name
-	trace.secrets = append(trace.secrets, a.APIToken)
+	trace.secrets = append(trace.secrets, a.secrets()...)
 	step := &upstreamTrace{path: path, fingerprint: a.Fingerprint, started: time.Now(), requestHeaders: headers.Clone()}
 	step.request.contentType = contentType
 	step.request.Write(body)
